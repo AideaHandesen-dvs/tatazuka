@@ -1,0 +1,153 @@
+/* 佇か 表示クライアント。CSS 3D だけで 2.5D を作る（Three.js 不採用、client/README.md 参照） */
+
+* { margin: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: linear-gradient(#2a3140, #171b24); /* カメラが無い端末の「単色」背景 */
+  font-family: sans-serif;
+  color: #eee;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* ---- カメラ背景（端末の透過演出） ---- */
+#camera {
+  position: fixed; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+/* ---- 透明な箱（傾きで覗き込む） ---- */
+#scene { position: fixed; inset: 0; z-index: 1; perspective: 900px; }
+#stage { position: absolute; inset: 0; transform-style: preserve-3d; }
+
+/* ---- 佇か本体：層ごとに translateZ を変えるとパララックスが出る ---- */
+#tatazuka {
+  position: absolute; left: 50%; bottom: 12%;
+  width: 180px; height: 210px; margin-left: -90px;
+  transform-style: preserve-3d;
+  transition: opacity .8s;
+}
+body.away #tatazuka { opacity: 0; pointer-events: none; } /* presence here:false ＝ 誰もいない部屋 */
+
+.shadow {
+  position: absolute; bottom: -12px; left: 50%;
+  width: 150px; height: 34px; margin-left: -75px;
+  background: radial-gradient(ellipse, rgba(0,0,0,.45), transparent 70%);
+  transform: translateZ(8px);
+}
+.puppet {
+  position: absolute; inset: 0;
+  transform-style: preserve-3d;
+  transform-origin: 50% 90%;
+}
+.body {
+  position: absolute; inset: 0;
+  background: #f4f1ea;
+  border-radius: 48% 48% 44% 44% / 52% 52% 42% 42%;
+  transform: translateZ(40px);
+  box-shadow: inset -14px -18px 30px rgba(0,0,0,.10);
+}
+.face {
+  position: absolute; top: 18%; left: 50%;
+  width: 120px; height: 80px; margin-left: -60px;
+  transform: translateZ(72px);
+}
+.eye {
+  position: absolute; top: 10px;
+  width: 16px; height: 24px; border-radius: 50%;
+  background: #26262b;
+  transition: all .25s;
+}
+.eye.left { left: 22px; }
+.eye.right { right: 22px; }
+.mouth {
+  position: absolute; left: 50%; top: 52px;
+  width: 22px; height: 10px; margin-left: -11px;
+  border-radius: 0 0 12px 12px;
+  background: #26262b;
+  transition: all .25s;
+}
+/* 頬の赤らみ（照れ用） */
+.face::before, .face::after {
+  content: ""; position: absolute; top: 36px;
+  width: 18px; height: 10px; border-radius: 50%;
+  background: rgba(240,120,120,.55);
+  opacity: 0; transition: opacity .3s;
+}
+.face::before { left: 2px; }
+.face::after { right: 2px; }
+
+/* ---- mood（protocol §4 の語彙を見た目に翻訳） ---- */
+[data-mood="通常"] .eye { animation: blink 6s infinite; }
+@keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+
+[data-mood="呆れ"] .eye { height: 7px; border-radius: 4px; }
+[data-mood="呆れ"] .mouth { width: 26px; height: 4px; border-radius: 2px; }
+
+[data-mood="疑い"] .eye.left { height: 8px; border-radius: 4px; }
+[data-mood="疑い"] .mouth { width: 14px; height: 5px; margin-left: -16px; border-radius: 3px; }
+
+[data-mood="喜び"] .eye {
+  height: 12px; background: transparent;
+  border-top: 5px solid #26262b; border-radius: 10px 10px 0 0;
+}
+[data-mood="喜び"] .mouth { width: 30px; height: 16px; }
+
+[data-mood="怒り"] .eye { height: 12px; }
+[data-mood="怒り"] .eye.left { transform: rotate(20deg); }
+[data-mood="怒り"] .eye.right { transform: rotate(-20deg); }
+[data-mood="怒り"] .mouth { border-radius: 12px 12px 0 0; height: 8px; }
+
+[data-mood="照れ"] .face::before, [data-mood="照れ"] .face::after { opacity: 1; }
+[data-mood="照れ"] .eye { height: 18px; }
+[data-mood="照れ"] .mouth { width: 14px; height: 7px; }
+
+/* ---- act（motion の語彙。クラス名は face.js の ACT_CLASS でマップ） ---- */
+.act-nod   { animation: nod .9s ease; }
+.act-shake { animation: headshake .8s ease; }
+.act-jump  { animation: jump .8s ease; }
+.act-look  { animation: look 1.1s ease; }
+@keyframes nod { 0%,100% { transform: none; } 25%,65% { transform: rotateX(18deg); } 45%,85% { transform: rotateX(0); } }
+@keyframes headshake { 0%,100% { transform: none; } 20% { transform: rotateY(16deg); } 40% { transform: rotateY(-16deg); } 60% { transform: rotateY(10deg); } 80% { transform: rotateY(-10deg); } }
+@keyframes jump { 0%,100% { transform: none; } 30% { transform: translateY(-46px); } 55% { transform: translateY(0); } 70% { transform: translateY(-18px); } }
+@keyframes look { 0%,100% { transform: none; } 35%,65% { transform: translateZ(30px) scale(1.05); } }
+
+/* ---- 吹き出し ---- */
+#balloon {
+  position: absolute; left: 50%; bottom: 112%;
+  transform: translateX(-50%) translateZ(90px);
+  min-width: 130px; max-width: 250px;
+  padding: 10px 14px;
+  background: rgba(255,255,255,.96); color: #222;
+  border-radius: 12px;
+  font-size: 14px; line-height: 1.6;
+  transition: opacity .6s;
+}
+#balloon::after {
+  content: ""; position: absolute; top: 100%; left: 50%; margin-left: -7px;
+  border: 7px solid transparent; border-top-color: rgba(255,255,255,.96);
+}
+#balloon.fade { opacity: 0; }
+#balloon[hidden] { display: none; }
+
+/* ---- 許可ボタン・HUD ---- */
+#perm {
+  position: fixed; z-index: 3; bottom: 18px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; gap: 10px;
+}
+#perm button, #hud button {
+  padding: 10px 16px; border: none; border-radius: 20px;
+  background: rgba(255,255,255,.88); color: #222; font-size: 14px;
+}
+#hud button { padding: 3px 8px; font-size: 11px; margin-top: 4px; }
+#hud {
+  position: fixed; z-index: 3; top: 10px; left: 10px;
+  font: 11px/1.7 monospace;
+  background: rgba(0,0,0,.35);
+  padding: 8px 10px; border-radius: 8px;
+  max-width: 70vw; overflow-wrap: anywhere;
+}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>佇か（プロトタイプ）</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- カメラ背景。許可されると「端末そのものが透明」になる（README §3-1） -->
+<video id="camera" autoplay playsinline muted hidden></video>
+
+<!-- 透明な箱。傾きで覗き込む -->
+<div id="scene">
+  <div id="stage">
+    <div id="tatazuka" data-mood="通常">
+      <div class="shadow"></div>
+      <div class="puppet">
+        <div class="body"></div>
+        <div class="face">
+          <div class="eye left"></div><div class="eye right"></div>
+          <div class="mouth"></div>
+        </div>
+      </div>
+      <div id="balloon" hidden></div>
+    </div>
+  </div>
+</div>
+
+<!-- ask 状態の cap だけここにボタンが並ぶ。佇かにねだられる対象 -->
+<div id="perm"></div>
+<!-- プロト用デバッグ表示 -->
+<div id="hud"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
