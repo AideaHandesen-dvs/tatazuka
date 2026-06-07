@@ -194,7 +194,7 @@ tatazuka/
 - [x] 表示クライアントとの通信プロトコル詳細 → **protocol/README.md に v0 を策定**（封筒・cap交渉・語彙・プレゼンス・再接続。2026-06-08）
 - [ ] OpenCLAW 連携の具体的な接続方法
 - [ ] 「人格」「イベント処理」の中身（LLM を組み込むか等）
-- [ ] HTTPS 配信方法（自己署名 / ローカル証明書 / トンネル等）
+- [x] HTTPS 配信方法 → **mkcert**（LAN 完結・枯れてる。手順は server/README.md。外から会いたくなったら Tailscale を再検討）
 
 ---
 
@@ -205,6 +205,6 @@ tatazuka/
 - **M0**: 設計メモ＋骨組みを初回コミット、GitHub に public で公開 【済 2026-06-07】
 - **M1**: ドキュメンテーション — protocol v0 の仕様書（capability ネゴシエーション・メッセージ設計）、各ディレクトリの役割文書 【済 2026-06-08 → protocol/README.md】
 - **M2**: 表示クライアント単体プロト — server 無しで「傾けると覗き込める＋カメラ背景」を体感する ←いまここ（client/ に初版。**実機での体感検証が残り**）
-- **M3**: server 骨組み — 静的配信＋WS、protocol v0 を実装で裏付ける
+- **M3**: server 骨組み — 静的配信＋WS、protocol v0 を実装で裏付ける 【静的配信＋HTTPS は前倒し済 → server/serve.js】
 - **M4**: 人格・イベント処理（茶々入れの中身）
 - **M5**: connectors/ — OpenCLAW・スタックチャン連携
