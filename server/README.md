@@ -1,15 +1,32 @@
 # server/ — 佇か本体（デーモン）
 
 将来ここが「頭脳」になる：WS サーバー・人格・イベント処理（README §4）。
-いまあるのは **M3 前倒しの HTTPS 静的配信だけ**（`serve.js`、依存ゼロ）。
-WS は M3、本格的な人格は M4 で足す。
+**依存ゼロ**（node 標準モジュールのみ、node_modules 無し）。
+
+| ファイル | 責務 |
+|---|---|
+| `serve.js` | エントリ。HTTPS 静的配信（client/）＋ WS を同一オリジンに張る |
+| `ws.js` | 依存ゼロの WebSocket（RFC6455）。`upgrade` に相乗り。マスク解除・フレーム生成・ping/pong・close |
+| `behavior.js` | 佇かの振る舞い（人格の素）。protocol v0 を server 側として実装。**M4 でここを育てる** |
 
 ## 動かし方
 
 ```sh
-node server/serve.js          # → https://durandal:8443/ （LAN なら https://192.168.1.99:8443/）
+node server/serve.js          # → https://durandal:8443/ ＋ wss://durandal:8443/ws
 PORT=9000 node server/serve.js
 ```
+
+## protocol v0 の server 側実装（M3）
+
+- WS は **同一オリジンの `/ws`**（protocol §1：オリジン一つ・wss 同一ホスト）。`serve.js` の HTTPS
+  サーバーに `attachWS` で相乗りさせる。別ポートにはしない。
+- `ws.js` は小さい JSON テキストフレーム専用に割り切った自前実装。`ws` ライブラリは入れない
+  （`git clone && node server/serve.js` で即動く self-contained さを優先）。binary フレームは無視、
+  断片化は連結対応、背圧は LAN・小メッセージ前提で見ない。
+- `behavior.js` は M2 の `client/mock-server.js` から振る舞いを移植したもの。体験は変えず本物化した。
+  トランスポート非依存（`createSession({send})→{receive,close}`）。接続ごとのタイマーは `close()` で掃除する。
+- 再接続時の hello 打ち直し（protocol §6-2）は **client 側の `ws-client.js`** が担当。server は
+  毎回新規接続として扱い、`resumed:true` の hello を見たら「落ちてたぞ」と茶々を入れる（§6-3）。
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
 

@@ -1,7 +1,7 @@
-// 佇か server — いまは M3 前倒しの「HTTPS 静的配信」だけ。WS と人格は M3/M4 で足す。
-// client/ を配信する：オリジン一つ・HTTPS 終端一箇所（README §8）。依存ゼロ。
+// 佇か server — HTTPS 静的配信 ＋ WebSocket（protocol v0）。人格の中身は M4 で behavior.js を育てる。
+// client/ を配信する：オリジン一つ・HTTPS 終端一箇所、wss も同一ホスト（README §8 / protocol §1）。依存ゼロ。
 //
-//   node server/serve.js          → https://<このマシン>:8443/
+//   node server/serve.js          → https://<このマシン>:8443/  ＋ wss://<このマシン>:8443/ws
 //   PORT=9000 node server/serve.js
 //
 // 証明書は mkcert 製（server/certs/、git 管理外）。再生成手順は server/README.md。
@@ -10,6 +10,8 @@ import https from 'node:https';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { attachWS } from './ws.js';
+import { createSession } from './behavior.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -47,6 +49,13 @@ const server = https.createServer(
   },
 );
 
+// ---- WebSocket（protocol v0）。同一オリジンの /ws に張る ----
+attachWS(server, '/ws', (sock) => {
+  const session = createSession({ send: (obj) => sock.send(obj) });
+  sock.onMessage((msg) => session.receive(msg));
+  sock.onClose(() => session.close());
+});
+
 server.listen(PORT, () => {
-  console.log(`佇か（静的配信のみ）→ https://localhost:${PORT}/`);
+  console.log(`佇か → https://localhost:${PORT}/  （wss://localhost:${PORT}/ws）`);
 });

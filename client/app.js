@@ -1,7 +1,9 @@
 // 表示クライアント本体：cap 検出・入力の意味化・メッセージ配線。
 // 設計の根拠は protocol/README.md。§番号のコメントはそこを指す。
 
-import { connect } from './mock-server.js'; // ← M3 で本物の WS 実装に差し替える継ぎ目
+// 本物の server（WS）に繋ぐ。オフライン開発は import 先を './mock-server.js' に替えるだけ
+// （mock も同じ connect({onMessage})→{send} の顔。client/README の「継ぎ目」参照）
+import { connect } from './ws-client.js';
 import * as face from './face.js';
 
 const $ = (s) => document.querySelector(s);

@@ -25,13 +25,15 @@ python3 -m http.server 8000 -d client
 | `index.html` | 骨組みだけ。box（#scene/#stage）・佇か・許可ボタン置き場・HUD |
 | `app.js` | cap 検出・入力の意味化（つつく/なでる/長押し/揺らす）・メッセージ配線 |
 | `face.js` | **顔**。protocol の意味論（mood/act/presence/say）を DOM に翻訳する層 |
-| `mock-server.js` | **偽の本体**。protocol v0 を厳守して喋る server スタブ |
+| `ws-client.js` | **本物の server への接続**（WS）。再接続＋hello 打ち直し（§6-2）を担当。app.js の既定の接続先 |
+| `mock-server.js` | **偽の本体**。protocol v0 を厳守して喋る server スタブ。オフライン開発用（import を差し替えて使う） |
 | `style.css` | 見た目すべて。mood/act の語彙 → CSS の対応もここ |
 
 ## 将来の継ぎ目（ここを差し替える）
 
-1. **mock → 本物の server（M3）**：`connect({onMessage}) → {send(msg)}` という形は
-   本物の WebSocket 実装でも変えない。`app.js` の import 先を差し替えるだけで移行できるようにしてある。
+1. **mock → 本物の server（M3 で完了）**：`connect({onMessage}) → {send(msg)}` という形は
+   本物の WebSocket 実装（`ws-client.js`）でも変えなかった。app.js は既定で `ws-client.js` に繋ぐ。
+   オフライン開発したいときは app.js の import を `./mock-server.js` に戻すだけ。
    mock は protocol v0 に厳密に従うこと。**mock だけの方言を作ったら負け**（それは protocol 違反の温床）。
 2. **顔の差し替え（README §5）**：`face.js` ＋ `style.css` の mood/act 対応部分を丸ごと入れ替えれば
    顔が変わる。`app.js` は顔の実装を知らない。
