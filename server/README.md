@@ -35,6 +35,8 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
 - **天気イベント源**（`weather.test.js`）：fetch を注入し、降水の遷移検知（降り始め/上がり）・
   気温の極端を一度だけ・geocoding の一度きり解決・取得失敗時の縮退を固定。behavior 側の配線
   （poll を ctx 込みで say・朝の `weather.morning` 縮退）は `behavior.test.js`。
+- **作業監視イベント源**（`activity.test.js`）：コマンド実行を注入し、idle しきい値跨ぎの離席/復帰・
+  X11/Wayland 出力のパース・バックエンド選択・ツール不在時の縮退を固定。配線は `behavior.test.js`。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
@@ -156,6 +158,32 @@ TZ_CITY=Tokyo TZ_LLM=ollama TZ_LLM_MODEL=qwen2.5:3b node server/serve.js
 # 緯度経度で直接（geocoding を飛ばす）
 TZ_LAT=35.68 TZ_LON=139.69 node server/serve.js
 ```
+
+### 作業監視（イベント源・`activity.js`）— 離席/復帰
+
+4 つ目の能動イベント源。佇か本体（server）は**ユーザーの作業 PC 上**で動くので、ホスト自身の
+入力 idle ＝実際の作業状態。これを読んで離席（`desk.away`）／復帰（`desk.back`）を喋る。
+天気と同じ「外部イベント源 → situation タグ → 人格層」型。
+
+- **idle 一本に絞った**。アクティブウィンドウは見ない（Wayland でほぼ不可・プライバシー）。
+- **env 設定は不要・自動検知**。X11 は `xprintidle`、Wayland/GNOME は `gdbus`（Mutter
+  IdleMonitor）に shell out する。**依存ゼロ（node_modules 無し）は維持**し、システムツールが
+  無ければ縮退。
+- **PE**：表示サーバが無い（ヘッドレス）／idle ツールが無い → 作業監視は出ない。佇かは従来の
+  在席・連続時間（接続時間の代理指標）でそのまま動く。**ナグ（work.60/120/180）の時計には触らない**
+  ＝離席/復帰は台詞を足すだけ（振る舞いを崩さない）。
+- 接続ごとに作る（離席状態を端末ごとに独立＝各端末が反応）。離席しきい値は既定 5 分。
+
+実機での生スモーク（X11 例。idle ツールが要る）：
+
+```sh
+# X11：sudo apt install xprintidle 等。DISPLAY がある環境で
+DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻る → desk.back
+# Wayland/GNOME：gdbus は通常入っている（Mutter IdleMonitor を使う）
+```
+
+> ロジック（しきい値跨ぎ・出力パース・縮退）は `activity.test.js` でコマンド実行を注入して固定。
+> 実バックエンドはヘッドレス CI では起こせないので、生確認は実機で。
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
 

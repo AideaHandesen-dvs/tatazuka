@@ -25,8 +25,8 @@ function timeBand(hour) {
 }
 
 // opts.now / opts.tickMs は注入可（テスト・デモで「間」を早送りするため。既定は実時間）。
-// opts.weather は天気イベント源（任意）。無ければ天気には触れない（PE）。weatherMs はその間隔。
-export function createSession({ send, persona, now, tickMs, weather, weatherMs }) {
+// opts.weather / opts.activity はイベント源（任意）。無ければそれには触れない（PE）。
+export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity }) {
   const p = persona || createPersona();
   const clock = now || Date.now;
   const interval = tickMs || TICK_MS;
@@ -68,11 +68,18 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs }
     weather.poll().then((w) => { if (w && !closed) say(w.situation, w.ctx); }).catch(() => {});
   }
 
+  // 作業監視：毎 tick で idle を見て離席/復帰を拾う（追加の蛇口。ナグの時計には触らない）。
+  function activityTick() {
+    if (!activity) return;
+    activity.poll().then((a) => { if (a && !closed) say(a.situation); }).catch(() => {});
+  }
+
   const tick = setInterval(() => {
     if (closed || !helloDone) return;
     const now = clock();
 
     weatherTick(now); // ④ 天気（撃ちっぱなし。下の work/time/idle とは別サイクル）
+    activityTick();   // ⑤ 作業監視＝離席/復帰（撃ちっぱなし・追加の蛇口）
 
     // ③ 在席・連続時間：閾値をまたいだら一度だけ
     const mins = (now - connectStart) / 60000;

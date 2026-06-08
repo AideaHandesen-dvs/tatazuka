@@ -134,6 +134,21 @@ test('天気オフ（weather 未注入）でも朝挨拶は出る（PE）', asyn
   s.close();
 });
 
+test('作業監視：poll が離席を返したら say する（ナグの時計には触らない）', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [];
+  const activity = { async poll() { return { situation: 'desk.away' }; } };
+  const FIXED = new Date('2026-06-09T14:00:00').getTime(); // バンド変化を起こさない固定時刻
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona([]), activity, now: () => FIXED, tickMs: 10 });
+
+  s.receive(HELLO);
+  t.mock.timers.tick(10);
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'desk.away'), '離席の say が飛ぶ');
+  s.close();
+});
+
 test('protocol 不一致の hello は error を返し、人格は動かさない', () => {
   const sent = [];
   const s = createSession({ send: (m) => sent.push(m), persona: { line: () => ({ text: 'x', mood: '通常' }) } });

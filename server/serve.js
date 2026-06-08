@@ -15,6 +15,7 @@ import { createSession } from './behavior.js';
 import { createPersona } from './persona.js';
 import { createLLMPersona } from './persona-llm.js';
 import { createWeather } from './weather.js';
+import { createActivity } from './activity.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
 // どちらも line() の顔が同じなので behavior.js からは区別がつかない。
@@ -22,6 +23,9 @@ const makePersona = process.env.TZ_LLM ? createLLMPersona : createPersona;
 // TZ_CITY または TZ_LAT/TZ_LON があれば天気イベント源を足す（無ければ null＝天気に触れない）。
 // 変化検知の状態を端末ごとに独立させたいので、接続のたびに作る（各端末が天気に反応する）。
 const weatherOn = !!(process.env.TZ_CITY || (process.env.TZ_LAT && process.env.TZ_LON));
+// 作業監視（離席/復帰）。表示サーバ（X11/Wayland）があれば host の idle を読む。接続ごとに作る
+// （変化検知の状態を端末ごとに独立）。ヘッドレス/ツール無しなら createActivity は null（PE）。
+const activityOn = !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -75,7 +79,7 @@ const server = https.createServer(
 
 // ---- WebSocket（protocol v0）。同一オリジンの /ws に張る ----
 attachWS(server, '/ws', (sock) => {
-  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona(), weather: createWeather() });
+  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona(), weather: createWeather(), activity: createActivity() });
   sock.onMessage((msg) => session.receive(msg));
   sock.onClose(() => session.close());
 });
@@ -88,4 +92,5 @@ server.listen(PORT, () => {
       : '人格: ルールベース',
   );
   console.log(weatherOn ? `天気: on（${process.env.TZ_CITY || `${process.env.TZ_LAT},${process.env.TZ_LON}`}）` : '天気: off');
+  console.log(activityOn ? '作業監視: 表示サーバあり（idle ツールが入っていれば離席/復帰を拾う）' : '作業監視: off（ヘッドレス）');
 });
