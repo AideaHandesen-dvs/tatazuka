@@ -53,3 +53,24 @@ python3 -m http.server 8000 -d client
   消す指示は無い（§4-2）。永遠に残ると見た目が悪いので client の解釈で薄くしている。
   ちゃんとやるなら protocol に消去の語彙を足す議論をすること。
 - HUD（左上）はプロト用。caps の現在値と直近の送受信を表示する。「視点リセット」で傾きの基準を取り直す。
+
+## iOS 12 対応（古い端末がプログレッシブ・エンハンスメントの試金石）
+
+実機 iPad Air 2（iOS 12.5.8 = Safari 12、2018年製）で「背景しか出ない」事故が出た。
+原因は **client コードがモダンすぎた**こと。これは設計思想（枯れた技術・低性能端末対応）の
+直接の試験であり、逃げずに iOS 12 で動くよう直した。避けた地雷：
+
+- **`?.`（optional chaining）/ `??`（nullish）は Safari 13.4+**。iOS 12 では**構文エラーで
+  モジュールが丸ごと死ぬ**（だから佇かもボタンも出ず、エラーすら表に出なかった）。明示チェックに展開。
+- **Pointer Events は iOS 13+**。iOS 12 に無い。`touchstart/move/end` ＋ `mousedown/move/up` の
+  両対応に置換。`setPointerCapture` の代わりに mouse は window で move/up を拾う。
+- **CSS `inset` 短縮形は Safari 14.5+**。`top/right/bottom/left` を個別指定に（`box-shadow: inset` は別物、そのまま）。
+
+実機デバッグは devtools を繋ぎにくいので、`index.html` に `window.onerror` →画面下の赤帯、を仕込んである。
+
+### iOS 12 実機の端末設定（コードでは直せない）
+
+- **設定 → Safari → モーションと画面の向きのアクセス → オン**。これがオフだと `deviceorientation` /
+  `devicemotion` のイベントが一切来ない（iOS 12.2 でデフォルトがオフに変わった）。傾き覗き込みの前提。
+- iOS 12 には `DeviceOrientationEvent.requestPermission`（許可ボタン）が無い。よって client は
+  orientation/motion を `ask` にせず、設定がオンなら**イベントが来た時点で `on`**に上げる（cap は「動いた」だけ信用）。

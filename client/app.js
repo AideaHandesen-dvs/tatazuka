@@ -25,14 +25,16 @@ function setCap(name, state) {
 try { if (document.createElement('canvas').getContext('webgl')) caps.webgl = 'on'; } catch { /* none のまま */ }
 
 // camera: getUserMedia があれば常に許可ゲート付き → ask
-if (navigator.mediaDevices?.getUserMedia) caps.camera = 'ask';
+// ※ iOS 12 向けに ?. を使わず明示チェック（client/README「iOS 12 対応」参照）
+if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) caps.camera = 'ask';
 
 // orientation / motion:
 // - iOS 系は明示許可（ユーザー操作起点）が要る → ask にして許可ボタンを出す
 // - それ以外はリスナーを張り、実際にイベントが来て初めて on にする
 //   （API が存在してもセンサが無い端末＝デスクトップでは一生イベントが来ない。
 //    「API がある」を信用せず「動いた」だけを信用する）
-const needsGate = typeof window.DeviceOrientationEvent?.requestPermission === 'function';
+const needsGate = 'DeviceOrientationEvent' in window
+  && typeof window.DeviceOrientationEvent.requestPermission === 'function';
 if (needsGate) {
   caps.orientation = 'ask';
   caps.motion = 'ask';
@@ -60,8 +62,9 @@ function onOrientation(e) {
   requestAnimationFrame(loop);
 })();
 
-// 傾きが無い間はポインタで視点を動かす代替（プログレッシブ・エンハンスメント）
-scene.addEventListener('pointermove', (e) => {
+// 傾きが無い間はマウスで視点を動かす代替（デスクトップ用）。
+// Pointer Events は iOS 12 非対応なので使わない。touch 端末は傾きで覗き込む。
+scene.addEventListener('mousemove', (e) => {
   if (caps.orientation === 'on') return;
   if (e.target.closest('#tatazuka')) return; // 佇かを触っている間は視点を動かさない
   ty = clamp(((e.clientX / innerWidth) - 0.5) * 22, -14, 14);
@@ -96,7 +99,7 @@ function renderPerm() {
         } else setCap('orientation', 'none'); // 拒否は ask → none（§3-2）
       } catch { setCap('orientation', 'none'); }
       try {
-        if (typeof DeviceMotionEvent?.requestPermission === 'function') {
+        if ('DeviceMotionEvent' in window && typeof DeviceMotionEvent.requestPermission === 'function') {
           const r = await DeviceMotionEvent.requestPermission();
           if (r === 'granted') {
             addEventListener('devicemotion', onMotion);
@@ -124,41 +127,59 @@ function renderPerm() {
   }
 }
 
-// ---- ポインタ → 意味化（つつく・なでる・長押し：§5）----
-// server は描画位置を知らないので、当たり判定と解釈はここ（client）の仕事
-function partOf(e) {
-  if (e.target.closest('.face')) return '顔';
+// ---- 入力 → 意味化（つつく・なでる・長押し：§5）----
+// server は描画位置を知らないので、当たり判定と解釈はここ（client）の仕事。
+// Pointer Events は iOS 12 非対応 → touch（スマホ/タブレット）＋ mouse（デスクトップ）で書く。
+function partAt(target, clientY) {
+  if (target.closest && target.closest('.face')) return '顔';
   const r = tatazuka.getBoundingClientRect();
-  return (e.clientY - r.top) < r.height * 0.45 ? '頭' : '体';
+  return (clientY - r.top) < r.height * 0.45 ? '頭' : '体';
 }
 
 let p = null;
-tatazuka.addEventListener('pointerdown', (e) => {
-  tatazuka.setPointerCapture(e.pointerId);
+function gestureStart(target, x, y) {
   p = {
-    lx: e.clientX, ly: e.clientY, dist: 0, sent: 0,
-    part: partOf(e), done: false,
+    lx: x, ly: y, dist: 0, sent: 0,
+    part: partAt(target, y), done: false,
     long: setTimeout(() => {
       if (p && p.dist < 12) { sense('長押し', p.part); p.done = true; }
     }, 600),
   };
-});
-tatazuka.addEventListener('pointermove', (e) => {
+}
+function gestureMove(x, y) {
   if (!p) return;
-  p.dist += Math.hypot(e.clientX - p.lx, e.clientY - p.ly);
-  p.lx = e.clientX; p.ly = e.clientY;
+  p.dist += Math.hypot(x - p.lx, y - p.ly);
+  p.lx = x; p.ly = y;
   if (p.dist - p.sent > 240) { // 「一なで分」たまるたびに繰り返し送る（§5-2）
     p.sent = p.dist;
     sense('なでる', p.part);
     p.done = true;
   }
-});
-tatazuka.addEventListener('pointerup', () => {
+}
+function gestureEnd() {
   if (!p) return;
   clearTimeout(p.long);
   if (!p.done && p.dist < 12) sense('つつく', p.part);
   p = null;
-});
+}
+
+// touch（iOS 12 含む）
+tatazuka.addEventListener('touchstart', (e) => {
+  const t = e.changedTouches[0];
+  gestureStart(e.target, t.clientX, t.clientY);
+}, { passive: true });
+tatazuka.addEventListener('touchmove', (e) => {
+  const t = e.changedTouches[0];
+  gestureMove(t.clientX, t.clientY);
+  if (p) e.preventDefault(); // なで中はスクロール/ラバーバンドを止める
+}, { passive: false });
+tatazuka.addEventListener('touchend', gestureEnd);
+tatazuka.addEventListener('touchcancel', gestureEnd);
+
+// mouse（デスクトップ）。setPointerCapture の代わりに window で move/up を拾う
+tatazuka.addEventListener('mousedown', (e) => gestureStart(e.target, e.clientX, e.clientY));
+addEventListener('mousemove', (e) => { if (p) gestureMove(e.clientX, e.clientY); });
+addEventListener('mouseup', gestureEnd);
 
 // ---- HUD（プロト用デバッグ表示）----
 let lastIn = '-', lastOut = '-';
@@ -181,14 +202,14 @@ const handlers = {
 };
 const link = connect({
   onMessage(msg) {
-    lastIn = msg.type + (msg.data?.text ? `「${msg.data.text.slice(0, 12)}」` : '');
+    lastIn = msg.type + (msg.data && msg.data.text ? `「${msg.data.text.slice(0, 12)}」` : '');
     renderHud();
     (handlers[msg.type] || (() => {}))(msg.data || {}); // 未知の型は黙って無視
   },
 });
 
 function send(msg) {
-  lastOut = msg.type + (msg.data?.kind ? `(${msg.data.kind})` : '');
+  lastOut = msg.type + (msg.data && msg.data.kind ? `(${msg.data.kind})` : '');
   renderHud();
   link.send(msg);
 }

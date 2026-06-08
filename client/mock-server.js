@@ -47,10 +47,11 @@ export function connect({ onMessage }) {
       setTimeout(() => say(`お、ここが「${d.label || '名前のない部屋'}」か。悪くないな。`, '通常'), 800);
     }
     // ask の cap を見つけたら、佇か自身が許可をねだる（protocol §3-2）
-    if (d.caps?.orientation === 'ask') {
+    const caps = d.caps || {};
+    if (caps.orientation === 'ask') {
       setTimeout(() => { if (alive) say('なあ、その「傾きを許可」ってボタン、押してみろよ。', '喜び'); }, 7000);
     }
-    if (d.caps?.camera === 'ask') {
+    if (caps.camera === 'ask') {
       setTimeout(() => { if (alive) say('カメラを許可したら、俺はこの箱ごと透明になれるんだがな。', '疑い'); }, 14000);
     }
   }

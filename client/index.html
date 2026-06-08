@@ -5,6 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>佇か（プロトタイプ）</title>
 <link rel="stylesheet" href="style.css">
+<!-- プロト用：実機にdevtoolsを繋がず JS エラーを画面に出す（古い Safari の切り分け用） -->
+<script>
+window.addEventListener('error', function (e) {
+  var d = document.getElementById('err') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'err' }));
+  d.textContent = 'ERR: ' + (e.message || e.error) + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno;
+});
+window.addEventListener('unhandledrejection', function (e) {
+  var d = document.getElementById('err') || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'err' }));
+  d.textContent = 'REJECT: ' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+});
+</script>
+<style>
+#err { position: fixed; z-index: 99; left: 0; right: 0; bottom: 0;
+  background: #b00; color: #fff; font: 12px/1.5 monospace; padding: 8px; }
+</style>
 </head>
 <body>
 <!-- カメラ背景。許可されると「端末そのものが透明」になる（README §3-1） -->
