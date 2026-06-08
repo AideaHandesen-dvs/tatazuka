@@ -70,8 +70,8 @@ test('部屋（端末）の名前は greet 系だけプロンプトに添える�
   assert.match(calls[0], /リビング/, 'greet では label を織り込む');
   await p.line('idle', { label: 'リビング' });
   assert.doesNotMatch(calls[1], /リビング/, 'idle 等では label を渡さない');
-  await p.line('greet'); // label 無しでも壊れない（名前の行ごと省く）
-  assert.doesNotMatch(calls[2], /名前/);
+  await p.line('greet'); // label 無しでも壊れない（部屋名の行ごと省く）
+  assert.doesNotMatch(calls[2], /部屋（端末）の名前/);
 });
 
 test('天気 situation は ctx.weather をプロンプトに織り込む', async () => {

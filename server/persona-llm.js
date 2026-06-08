@@ -90,12 +90,13 @@ export function loadCharacter(env) {
   return DEFAULT_CHARACTER;
 }
 
-// system プロンプト＝ゴースト（差し替え可）＋出力契約（固定）
-function buildSystem(character) {
-  return `${character}\n\n${OUTPUT_RULE}`;
+// system プロンプト。ruleInUser なら system はゴースト専用にし、出力契約は user 側（生成直前）に
+// 回す＝キャラ記述を厚くしても JSON 規律を別枠で守れる（小型モデルの“直近指示”効果を狙う）。
+function buildSystem(character, ruleInUser) {
+  return ruleInUser ? character : `${character}\n\n${OUTPUT_RULE}`;
 }
 
-function buildUser(situation, desc, ctx) {
+function buildUser(situation, desc, ctx, ruleInUser) {
   let s = `状況: ${desc}`;
   // 部屋（端末）の名前は挨拶のときだけ意味がある。常に渡すと毎回機械的に名前を口にして
   // 定型文っぽくなるので、greet 系だけ添える（しかも label があるときだけ）。
@@ -108,6 +109,8 @@ function buildUser(situation, desc, ctx) {
     const place = w.city ? `${w.city}は` : '';
     s += `\n今の天気: ${place}${w.desc}、気温${Math.round(w.tempC)}度`;
   }
+  // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
+  if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
   return `${s}\nこの状況でのこのキャラの一言を JSON で出せ。`;
 }
 
@@ -235,8 +238,12 @@ export function createLLMPersona(opts) {
   opts = opts || {};
   const rule = opts.fallback || createPersona();      // フォールバックの“床”
   const provider = opts.provider || createProvider(opts.env); // null なら全部ルールに委譲
+  // 出力契約を user 側（生成直前）に回すか。既定 true：system をゴースト専用にするとキャラ忠実度が
+  // 上がり（厚いゴーストほど顕著）、JSON 規律は user の直近指示で別枠に守れる。実測で決定（2026-06-09）。
+  // 旧挙動（契約を system 末尾）に戻すなら env TZ_LLM_RULE_POS=system。
+  const ruleInUser = opts.ruleInUser ?? ((opts.env || process.env).TZ_LLM_RULE_POS !== 'system');
   // ゴーストは生成時に一度だけ確定（接続ごと。TZ_CHARACTER / characters/ を反映）
-  const system = buildSystem(opts.character || loadCharacter(opts.env));
+  const system = buildSystem(opts.character || loadCharacter(opts.env), ruleInUser);
   return {
     async line(situation, ctx) {
       const desc = LLM_SITUATIONS[situation];
@@ -246,7 +253,7 @@ export function createLLMPersona(opts) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
       try {
-        const raw = await provider.generate(system, buildUser(situation, desc, ctx), ctrl.signal);
+        const raw = await provider.generate(system, buildUser(situation, desc, ctx, ruleInUser), ctrl.signal);
         const ln = parseLine(raw);
         if (ln) return ln;
       } catch (e) {

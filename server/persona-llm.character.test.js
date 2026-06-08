@@ -48,15 +48,24 @@ test('パストラバーサルな名前は弾いてフォールバック（../ �
   }
 });
 
-test('createLLMPersona は選んだゴーストを system に載せ、OUTPUT_RULE を必ず添える', async () => {
+test('既定：system はゴースト専用、OUTPUT_RULE は user 側（生成直前）に添わる', async () => {
   const cap = captureProvider('{"text":"おはようございます","mood":"通常"}');
   const p = createLLMPersona({ provider: cap.provider, env: { TZ_CHARACTER: 'shitsuji' } });
   const r = await p.line('time.morning', { label: '書斎' });
 
   assert.deepEqual(r, { text: 'おはようございます', mood: '通常' });
-  assert.match(cap.seen.system, /ご主人様/, 'ゴーストが system に入る');
-  assert.match(cap.seen.system, /"text": "<台詞>", "mood": "<気分>"/, 'OUTPUT_RULE（JSON 契約）が常に付く');
-  assert.match(cap.seen.system, /通常 \/ 呆れ \/ 疑い \/ 喜び \/ 怒り \/ 照れ/, 'mood 語彙も固定で付く');
+  assert.match(cap.seen.system, /ご主人様/, 'ゴーストは system に入る');
+  assert.doesNotMatch(cap.seen.system, /"text": "<台詞>"/, '既定では OUTPUT_RULE を system に置かない');
+  assert.match(cap.seen.user, /"text": "<台詞>", "mood": "<気分>"/, 'JSON 契約は user 側に付く');
+  assert.match(cap.seen.user, /通常 \/ 呆れ \/ 疑い \/ 喜び \/ 怒り \/ 照れ/, 'mood 語彙も user 側に');
+});
+
+test('TZ_LLM_RULE_POS=system で旧挙動（契約を system 末尾）に戻せる', async () => {
+  const cap = captureProvider('{"text":"よし","mood":"喜び"}');
+  const p = createLLMPersona({ provider: cap.provider, env: { TZ_CHARACTER: 'shitsuji', TZ_LLM_RULE_POS: 'system' } });
+  await p.line('idle');
+  assert.match(cap.seen.system, /ご主人様/);
+  assert.match(cap.seen.system, /"text": "<台詞>"/, '旧挙動では OUTPUT_RULE が system に戻る');
 });
 
 test('opts.character はファイルより優先（直接注入で差し替え）', async () => {
@@ -64,5 +73,5 @@ test('opts.character はファイルより優先（直接注入で差し替え�
   const p = createLLMPersona({ provider: cap.provider, character: 'あなたはテスト用ゴースト。一人称はワタシ。' });
   await p.line('idle');
   assert.match(cap.seen.system, /テスト用ゴースト/);
-  assert.match(cap.seen.system, /mood/, 'OUTPUT_RULE は依然添わる');
+  assert.match(cap.seen.user, /mood/, 'OUTPUT_RULE は user 側に添わる');
 });

@@ -100,6 +100,7 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 | `TZ_LLM` | （未設定＝LLM オフ） | `ollama` か `claude`。未設定なら `serve.js` は従来のルール persona を使う |
 | `TZ_LLM_MODEL` | provider 既定 | モデル名 |
 | `TZ_CHARACTER` | `tatazuka` | ゴースト（人格）を名前で選ぶ → `characters/<名前>.txt`。LLM 有効時のみ効く |
+| `TZ_LLM_RULE_POS` | `user` | 出力契約の置き場所。既定は user（system をキャラ専用に）。`system` で旧挙動 |
 | `OLLAMA_HOST` | `http://localhost:11434` | ollama 接続先 |
 | `ANTHROPIC_API_KEY` | — | `claude` 時のみ必須 |
 | `TZ_CITY` | — | 天気の場所（都市名。例 `Tokyo`）。設定すると天気イベントが有効になる |
@@ -129,11 +130,18 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 3. **後処理**：text に紛れた mood 語の行を除去・改行を畳み・2文に詰める。`mood` 語彙外は通常に丸め
 4. それでも text が取れなければルール表にフォールバック
 
+**出力契約の置き場所（`TZ_LLM_RULE_POS`、既定 user）**：OUTPUT_RULE を system 末尾ではなく
+**user メッセージの生成直前**に置く。こうすると system が**ゴースト専用**になり、小型モデルが人格を
+内面化しやすくなる＝**キャラ忠実度が上がる（厚いゴーストほど顕著）**。JSON 規律は user の直近指示で
+別枠に守られるので fallback も増えない。これは「ゴーストを厚く/増やしたときの表現能力の頭打ち」を
+緩める＝**OUTPUT_RULE が system に居座ってキャラ記述を圧迫する状態を避ける**ため。`system` で旧挙動。
+
 部屋（端末）の名前は **greet 系だけ**プロンプトに添える（毎回渡すと機械的に名前を連呼して定型文
 っぽくなるため）。天気 situation では `ctx.weather`（空模様・気温・都市）を添える。
 
 > qwen2.5:3b で実測して詰めた（fallback 率 42%→0%、自名混入・語彙外mood・3文以上・改行を解消）。
-> 効いた手：寛容抽出・num_predict/stop/温度0.6・「むやみに名乗るな」の一行・部屋名の greet 限定。
+> 効いた手：寛容抽出・num_predict/stop/温度0.6・「むやみに名乗るな」の一行・部屋名の greet 限定・
+> **OUTPUT_RULE を user 側に（厚いゴーストで A=部屋名連呼/敬語漏れ/「（端末）」literal 漏れ → B=癖が乗る）**。
 
 起動例：
 
