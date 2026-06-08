@@ -227,10 +227,11 @@ function sense(kind, part) {
 
 // ---- hello（§3-1）----
 const label = new URLSearchParams(location.search).get('label') || '名無しの部屋';
-const resumed = sessionStorage.getItem('tz-connected') === '1'; // 「さっきまで繋がってた」の自覚（§6-3）
-send({ type: 'hello', data: { protocol: 0, label, resumed, caps: { ...caps } } });
+// 初回接続（リロード・再訪を含む）は必ず「初めまして」。再訪を「落ちた」と誤解しない。
+// resumed が立つのは “途中で WS が切れて自動再接続した” ときだけで、それは ws-client.js が
+// everConnected で握って打ち直す（§6-3）。client 側はここで嘘の resumed を作らない。
+send({ type: 'hello', data: { protocol: 0, label, resumed: false, caps: { ...caps } } });
 helloSent = true;
-sessionStorage.setItem('tz-connected', '1');
 renderPerm();
 renderHud();
 
