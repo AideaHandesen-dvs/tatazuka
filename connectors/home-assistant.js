@@ -1,0 +1,61 @@
+// Home Assistant 入力コネクタ（在宅/外出）。connectors の「入力」役の初例。
+// イベント源パターン（README §6-4 / connectors/README.md §3-1）：外の出来事 → situation → 人格層。
+//   home-assistant.js … HA の person/device_tracker の状態を読む（REST・トークン認証）＋変化検知
+//   behavior.js       … いつ拾うか（sources の一員として毎 tick poll）
+//   persona.*         … 何を喋るか（home.back / home.away タグ。LLM は ctx.who を織り込む）
+//
+// 設計（イベント源パターンの三点・weather/activity と同型）：
+//   - protocol は不変。say（situation タグ）に乗るだけ＝client は無改修。
+//   - PE：接続先 URL／トークン／対象 entity が無い・HA が落ちている → null（黙る）。佇かは喋る。
+//   - IO 注入：fetch を opts で差し替え可能（テストで実 HA を叩かない）。
+//   - 依存ゼロ：グローバル fetch のみ（SDK なし。weather と同じ方針）。
+//
+// 監視対象は person.* / device_tracker.*。状態は home / not_home / ゾーン名（"Work" 等）を取り得る。
+// home 以外はすべて「外出」とみなす＝ゾーン間移動（not_home→Work）は外出のままなので発話しない。
+// 複数 entity・ドア/照明などへの拡張は situation を足す形で（この型を増やす）。
+
+const HOME = 'home'; // HA の在宅状態。これ以外は外出扱い
+
+// env / opts を見て connector を作る。前提が欠ければ null（＝この connector はオフ＝PE）。
+// opts.fetch / opts.url / opts.token / opts.entity / opts.env はテスト・直接指定用。
+export function createHomeAssistant(opts) {
+  opts = opts || {};
+  const e = opts.env || process.env;
+  const fetchImpl = opts.fetch || globalThis.fetch;
+  const base = (opts.url || e.TZ_HASS_URL || '').replace(/\/+$/, ''); // 末尾スラッシュを正規化
+  const token = opts.token || e.TZ_HASS_TOKEN;
+  const entity = opts.entity || e.TZ_HASS_PERSON;
+
+  // PE：接続先・認証・対象のどれかが欠ければ connector オフ
+  if (!base || !token || !entity || typeof fetchImpl !== 'function') return null;
+
+  let primed = false;
+  let wasHome;  // 直前の在宅状態（遷移検知の状態。接続ごとに独立＝各端末が反応）
+
+  // HA REST：GET /api/states/<entity>。読めなければ null（黙る＝PE）。
+  async function read() {
+    try {
+      const r = await fetchImpl(`${base}/api/states/${encodeURIComponent(entity)}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (!r || !r.ok) return null;
+      const j = await r.json();
+      return j && typeof j.state === 'string' ? j : null;
+    } catch {
+      return null; // HA 不達 → 黙る
+    }
+  }
+
+  return {
+    async poll() {
+      const st = await read();
+      if (!st) return null;
+      const home = st.state === HOME;
+      const who = st.attributes && st.attributes.friendly_name;
+      if (!primed) { primed = true; wasHome = home; return null; } // 初回は基準だけ（遷移と誤検知しない）
+      if (home === wasHome) return null;                            // 無変化（ゾーン間移動を含む）
+      wasHome = home;
+      return { situation: home ? 'home.back' : 'home.away', ctx: who ? { who } : undefined };
+    },
+  };
+}

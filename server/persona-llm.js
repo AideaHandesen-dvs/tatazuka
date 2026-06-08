@@ -26,6 +26,9 @@ const LLM_SITUATIONS = {
   'walk.back':      'ちょっと留守にしていて、いま戻ってきた',
   'desk.away':      'ユーザーがしばらくキーボードを離れて、席を外したらしい',
   'desk.back':      '席を外していたユーザーが、デスクに戻ってきた',
+  // 在宅/外出（connectors/home-assistant.js が HA の在席で検知。ctx.who に対象の名前が入ることがある）
+  'home.away':      'ユーザーが家を出て外出した。見送る',
+  'home.back':      'ユーザーが外出から帰宅した（家に着いた）。出迎える',
   'time.morning':   '在席中に朝（5〜10時）を迎えた',
   'time.noon':      '在席中に昼（10〜17時）になった',
   'time.evening':   '在席中に夕方（17〜21時）になった',
@@ -108,6 +111,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   if (w) {
     const place = w.city ? `${w.city}は` : '';
     s += `\n今の天気: ${place}${w.desc}、気温${Math.round(w.tempC)}度`;
+  }
+  // 在宅/外出（home.*）で対象の名前が分かれば添える（「おかえり、◯◯」のように呼べる）
+  if (ctx && ctx.who && (situation === 'home.back' || situation === 'home.away')) {
+    s += `\n相手の名前: ${ctx.who}`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

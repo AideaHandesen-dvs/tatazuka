@@ -85,10 +85,11 @@ export function createXxx(opts) {
 - **situation タグ**は persona 側の語彙を増やす行為。新タグを足したら `characters/` やルール表に台詞を用意する。
 - **接続ごとに作る**（変化検知の状態を端末ごとに独立させる。weather/activity がそうしている理由と同じ）。
 
-> 配線について：behavior.js は今 `weather` / `activity` を名前付き opt で受けている。実 connector を
-> 初めて挿すとき、この名前付き opt を `sources: [...]`（poll を持つものの配列）に一般化する——のが
-> 「Home Assistant 入力」方向の最初の一歩。**今はやらない**（消費者が居ないうちの一般化は避ける＝
-> 「必要になった型にだけ足す」protocol §2 の流儀）。型だけ [example-source.js](example-source.js) で固定しておく。
+> 配線：behavior.js は `poll()` を持つ入力源を `sources: [...]` で一様に受ける（activity も
+> その一員）。connector を挿す＝この配列に足すだけ。serve.js の `makeSources()` が env を見て
+> 有効な connector を組み立てる（無効なら `null` を `filter` で落とす＝PE）。**接続ごとに作る**。
+> ※ この一般化は最初の実 connector（Home Assistant）と同時に入れた。消費者の無いうちは
+> `weather`/`activity` の名前付き opt のままにしていた（「必要になった型にだけ足す」protocol §2 の流儀）。
 
 ### 3-2. 出力コネクタの契約
 
@@ -113,20 +114,43 @@ export function createXxx(opts) {
 
 ---
 
-## 5. 今ここに有るもの / まだ無いもの
+## 5. Home Assistant 入力コネクタ（入力役の初例・`home-assistant.js`）
 
-**有る（土台）**：
+イベント源パターンの最初の実 connector。HA の人物/端末の在席状態を読んで**在宅/外出**を喋る。
+weather/activity と同型（fetch 注入・PE縮退・遷移検知）で、protocol は不変（`say` に乗るだけ）。
+
+- **対象**：`person.*` / `device_tracker.*`（状態 `home` / `not_home` / ゾーン名）。`home` 以外は
+  すべて外出扱い＝**ゾーン間移動（not_home→Work）では喋らない**。`friendly_name` があれば `ctx.who`
+  に乗せ、LLM は「おかえり、◯◯」と呼べる（ルール表は固定台詞）。
+- **situation**：`home.back`（帰宅＝出迎え）／`home.away`（外出＝見送り）。`desk.*`（PC の idle）とは別物。
+- **env**：`TZ_HASS_URL`（例 `http://homeassistant.local:8123`）／`TZ_HASS_TOKEN`（長期アクセストークン）／
+  `TZ_HASS_PERSON`（対象 entity 例 `person.john`）。**三つ揃わなければ connector オフ（PE）**。
+- **拡張**：複数 entity・ドア/照明/温度などは situation を足す形で（この型を増やす）。HA は REST が
+  枯れているので fetch 一本で足り、依存ゼロを崩さない。
+
+```sh
+TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=person.john \
+  node server/serve.js     # 帰宅すると「おかえり」、外出すると「いってらっしゃい」
+```
+
+> ロジック（遷移検知・ゾーン間無発話・縮退・認証ヘッダ）は `home-assistant.test.js` で fetch を
+> 注入して固定。実 HA への生スモークは各自の環境で。
+
+## 6. 今ここに有るもの / まだ無いもの
+
+**有る**：
 
 - この設計メモ（二つの契約の所在を確定）。
+- [home-assistant.js](home-assistant.js) … **入力役の初例**（在宅/外出）。behavior.js の `sources` 配線込み。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
-  コピーして `read()`/`translate()` を実装すれば実 connector になる。
-- [example-source.test.js](example-source.test.js) … `poll()` の契約（遷移検知・縮退・状態独立）を固定。
+  コピーして `read()`/`translate()` を実装すれば新しい入力 connector になる。
+- 各 `*.test.js` … `poll()` の契約（遷移検知・縮退・状態独立・認証）を固定。
 
-**まだ無い（M5 の二方向）**：
+**まだ無い（M5 の残り）**：
 
-- **入力**：実イベント源（Home Assistant 等）と、behavior.js の `sources` 一般化（§3-1）。
+- **入力**：HA 以外のイベント源（MQTT・他の HA ドメイン等）。型は揃ったので足すだけ。
 - **出力**：ハブのルーティングと、物理スタックチャン/OpenCLAW を v0 client として喋らせる側（§3-2）。
 
 ```sh
-node --test connectors/*.test.js   # 契約テンプレのテスト（依存ゼロ）
+node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ）
 ```

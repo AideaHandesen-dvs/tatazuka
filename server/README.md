@@ -105,6 +105,9 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 | `ANTHROPIC_API_KEY` | — | `claude` 時のみ必須 |
 | `TZ_CITY` | — | 天気の場所（都市名。例 `Tokyo`）。設定すると天気イベントが有効になる |
 | `TZ_LAT` / `TZ_LON` | — | 緯度経度で直接指定（あれば geocoding を飛ばす。`TZ_CITY` より優先） |
+| `TZ_HASS_URL` | — | Home Assistant の URL（例 `http://homeassistant.local:8123`）。連携の接続先 |
+| `TZ_HASS_TOKEN` | — | HA の長期アクセストークン |
+| `TZ_HASS_PERSON` | — | 在宅判定する entity（例 `person.john`）。**URL/TOKEN/PERSON が揃うと在宅/外出が有効** |
 
 **キャラは差し替えられる（ゴースト）。** `CHARACTER`（誰か＝差し替え対象）と `OUTPUT_RULE`
 （tatazuka 固定の JSON 出力契約）を分離してある。人格は `characters/<名前>.txt` に外出しされ、
@@ -206,6 +209,22 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 
 > ロジック（しきい値跨ぎ・出力パース・縮退）は `activity.test.js` でコマンド実行を注入して固定。
 > 実バックエンドはヘッドレス CI では起こせないので、生確認は実機で。
+
+### connectors（イベント源・入力）— Home Assistant 等
+
+5 つ目以降の能動イベント源は **`connectors/`** に置く（ホスト自身のセンサではなく**外部システム**を
+読む第三者アダプタ。詳細は [../connectors/README.md](../connectors/README.md)）。配線は天気/作業監視と同型：
+
+- behavior.js は `poll()` を持つ入力源を **`sources: [...]`** で一様に受ける（activity もその一員）。
+  serve.js の `makeSources()` が env を見て有効な connector を組み立て、無効なものは `null` を落とす（PE）。
+- 初例は **Home Assistant**（`connectors/home-assistant.js`）：HA の在席（`person.*`/`device_tracker.*`）を
+  読んで在宅 `home.back`／外出 `home.away` を喋る。`TZ_HASS_URL`/`TZ_HASS_TOKEN`/`TZ_HASS_PERSON` が
+  揃えば有効（PE）。`friendly_name` は `ctx.who` で LLM に渡る（「おかえり、◯◯」）。
+
+```sh
+TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=person.john \
+  node server/serve.js
+```
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
 

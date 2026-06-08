@@ -16,6 +16,7 @@ import { createPersona } from './persona.js';
 import { createLLMPersona } from './persona-llm.js';
 import { createWeather } from './weather.js';
 import { createActivity } from './activity.js';
+import { createHomeAssistant } from '../connectors/home-assistant.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
 // どちらも line() の顔が同じなので behavior.js からは区別がつかない。
@@ -26,6 +27,10 @@ const weatherOn = !!(process.env.TZ_CITY || (process.env.TZ_LAT && process.env.T
 // 作業監視（離席/復帰）。表示サーバ（X11/Wayland）があれば host の idle を読む。接続ごとに作る
 // （変化検知の状態を端末ごとに独立）。ヘッドレス/ツール無しなら createActivity は null（PE）。
 const activityOn = !!(process.env.DISPLAY || process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland');
+// connectors（入力）。Home Assistant が在宅/外出を投げる。URL/トークン/対象 entity が揃えば有効。
+// 接続ごとに作る（変化検知の状態を端末ごとに独立）。揃わなければ createHomeAssistant は null（PE）。
+const hassOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_PERSON);
+const makeSources = () => [createHomeAssistant()].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -79,7 +84,7 @@ const server = https.createServer(
 
 // ---- WebSocket（protocol v0）。同一オリジンの /ws に張る ----
 attachWS(server, '/ws', (sock) => {
-  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona(), weather: createWeather(), activity: createActivity() });
+  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources() });
   sock.onMessage((msg) => session.receive(msg));
   sock.onClose(() => session.close());
 });
@@ -93,4 +98,5 @@ server.listen(PORT, () => {
   );
   console.log(weatherOn ? `天気: on（${process.env.TZ_CITY || `${process.env.TZ_LAT},${process.env.TZ_LON}`}）` : '天気: off');
   console.log(activityOn ? '作業監視: 表示サーバあり（idle ツールが入っていれば離席/復帰を拾う）' : '作業監視: off（ヘッドレス）');
+  console.log(hassOn ? `connectors: Home Assistant on（${process.env.TZ_HASS_PERSON}）` : 'connectors: off');
 });

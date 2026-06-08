@@ -149,6 +149,41 @@ test('作業監視：poll が離席を返したら say する（ナグの時計�
   s.close();
 });
 
+test('sources：connector の poll が situation を返したら ctx 込みで say する', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [], seen = [];
+  const sources = [{ async poll() { return { situation: 'home.back', ctx: { who: 'John' } }; } }];
+  const FIXED = new Date('2026-06-09T14:00:00').getTime(); // バンド変化を起こさない固定時刻
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona(seen), sources, now: () => FIXED, tickMs: 10 });
+
+  s.receive(HELLO);
+  t.mock.timers.tick(10);
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'home.back'), 'connector の say が飛ぶ');
+  const h = seen.find((x) => x.s === 'home.back');
+  assert.equal(h.ctx.who, 'John', 'connector の ctx（who）が persona に届く');
+  assert.equal(h.ctx.label, '居間', '基底 ctx（label）に重ねて渡る');
+  s.close();
+});
+
+test('sources：activity と connectors は同列に poll される（両方喋る）', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [];
+  const activity = { async poll() { return { situation: 'desk.back' }; } };
+  const sources = [{ async poll() { return { situation: 'home.back' }; } }];
+  const FIXED = new Date('2026-06-09T14:00:00').getTime();
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona([]), activity, sources, now: () => FIXED, tickMs: 10 });
+
+  s.receive(HELLO);
+  t.mock.timers.tick(10);
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'desk.back'), 'activity も poll される');
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'home.back'), 'connector も poll される');
+  s.close();
+});
+
 test('protocol 不一致の hello は error を返し、人格は動かさない', () => {
   const sent = [];
   const s = createSession({ send: (m) => sent.push(m), persona: { line: () => ({ text: 'x', mood: '通常' }) } });

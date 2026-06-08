@@ -7,8 +7,10 @@
 //   s.receive(msg)  ← client からの {type,data}
 //   s.close()       ← 切断。タイマーを掃除する
 //
-// イベント源（M4）：①触られた（sense・反応）②時刻帯 ③在席・連続時間。
-// PC作業監視・天気・LLM は別マイルストーン。
+// イベント源（M4）：①触られた（sense・反応）②時刻帯 ③在席・連続時間 ④天気 ⑤作業監視
+// ⑥外部 connector（Home Assistant 等＝connectors/）。④以降は「外部イベント源 → situation
+// タグ → 人格層」の同型（README §6-4）。activity と connectors は poll() を持つ入力源として
+// 一様に扱う（sources）。LLM persona は別の継ぎ目（persona-llm.js）。
 
 import { createPersona } from './persona.js';
 
@@ -25,13 +27,17 @@ function timeBand(hour) {
 }
 
 // opts.now / opts.tickMs は注入可（テスト・デモで「間」を早送りするため。既定は実時間）。
-// opts.weather / opts.activity はイベント源（任意）。無ければそれには触れない（PE）。
-export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity }) {
+// opts.weather はイベント源（任意・current() を持つ特別扱い＝朝の挨拶／遅い別サイクル）。
+// opts.activity / opts.sources は poll() だけ持つ入力源。activity（作業監視）も sources の一員として
+// 一様に毎 tick poll される（connectors の Home Assistant 等も sources で挿す）。無ければ触れない（PE）。
+export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity, sources }) {
   const p = persona || createPersona();
   const clock = now || Date.now;
   const interval = tickMs || TICK_MS;
   const weatherEvery = weatherMs || WEATHER_MS;
   const ctx = { label: '名前のない部屋' };
+  // 入力源（poll() → {situation, ctx?}|null）を一様に扱う。activity も connectors も区別しない。
+  const pollables = [activity, ...(sources || [])].filter(Boolean);
 
   const timers = new Set();
   let closed = false;
@@ -68,10 +74,12 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     weather.poll().then((w) => { if (w && !closed) say(w.situation, w.ctx); }).catch(() => {});
   }
 
-  // 作業監視：毎 tick で idle を見て離席/復帰を拾う（追加の蛇口。ナグの時計には触らない）。
-  function activityTick() {
-    if (!activity) return;
-    activity.poll().then((a) => { if (a && !closed) say(a.situation); }).catch(() => {});
+  // 入力源：毎 tick で各 poll を撃ち、situation が返れば ctx 込みで喋る（追加の蛇口。
+  // ナグの時計には触らない＝振る舞いを崩さず台詞を足すだけ）。撃ちっぱなし・解決は遅延。
+  function sourcesTick() {
+    for (const src of pollables) {
+      src.poll().then((r) => { if (r && !closed) say(r.situation, r.ctx); }).catch(() => {});
+    }
   }
 
   const tick = setInterval(() => {
@@ -79,7 +87,7 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     const now = clock();
 
     weatherTick(now); // ④ 天気（撃ちっぱなし。下の work/time/idle とは別サイクル）
-    activityTick();   // ⑤ 作業監視＝離席/復帰（撃ちっぱなし・追加の蛇口）
+    sourcesTick();    // ⑤⑥ 入力源＝作業監視・connectors（撃ちっぱなし・追加の蛇口）
 
     // ③ 在席・連続時間：閾値をまたいだら一度だけ
     const mins = (now - connectStart) / 60000;
