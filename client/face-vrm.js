@@ -23,7 +23,10 @@ const EXPR = {
 };
 const ALL_EXPR = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
 
-export async function createVRMFace({ scene: host, modelUrl }) {
+// turn=モデルの向き(半回転数, 既定1=180°でカメラを向く), dist=顔までの距離,
+// yOffset=注視点の高さ補正, arms=腕を下げる角度(rad, T字→Aポーズ。0で無効、符号反転で上下逆)
+// ※ 見た目はヘッドレスで確認できないため、これらは ?turn= ?dist= ?y= ?arms= で実機から微調整できる
+export async function createVRMFace({ scene: host, modelUrl, turn = 1, dist = 0.95, yOffset = 0, arms = 1.0 }) {
   // ---- レンダラ（背景透過：カメラ映像＝透明な箱が後ろに透ける）----
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;';
@@ -49,15 +52,22 @@ export async function createVRMFace({ scene: host, modelUrl }) {
 
   if (VRMUtils.removeUnnecessaryVertices) VRMUtils.removeUnnecessaryVertices(gltf.scene);
   if (VRMUtils.combineSkeletons) VRMUtils.combineSkeletons(gltf.scene);
-  vrm.scene.rotation.y = Math.PI; // three-vrm は -Z 向きに正規化。カメラ（+Z 側）を向かせる
+  vrm.scene.rotation.y = Math.PI * turn; // three-vrm は -Z 向きに正規化。既定でカメラ（+Z 側）を向かせる
   scene.add(vrm.scene);
+
+  // T字ポーズ → A字ポーズ（腕を下げる）。VRM に静止ポーズは無いのでこちらで整える
+  const armL = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+  const armR = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+  if (armL) armL.rotation.z = arms;
+  if (armR) armR.rotation.z = -arms;
 
   // 顔の高さを測ってフレーミング
   const head = vrm.humanoid && vrm.humanoid.getNormalizedBoneNode('head');
   const headPos = new THREE.Vector3(0, 1.35, 0);
   if (head) head.getWorldPosition(headPos);
   const target = headPos.clone();
-  const baseR = 0.95; // カメラ距離（顔〜上半身が入る）
+  target.y += yOffset;
+  const baseR = dist; // カメラ距離（顔〜上半身が入る）
 
   // 視線追従：目をカメラ（＝覗き込む視点）に向ける。覗き込むと見返してくる
   if (vrm.lookAt) vrm.lookAt.target = camera;

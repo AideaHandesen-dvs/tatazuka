@@ -239,12 +239,17 @@ renderHud();
 // iOS 12（=試金石の iPad Air 2）は three.js をパースできず、ここで自然にフォールバックする。
 (async function tryVRM() {
   if (caps.webgl !== 'on') return;
-  const modelUrl = new URLSearchParams(location.search).get('model') || './models/tatazuka.vrm';
+  const q = new URLSearchParams(location.search);
+  const modelUrl = q.get('model') || './models/vrm/aya-nogloves.vrm';
+  const num = (k) => (q.has(k) ? parseFloat(q.get(k)) : undefined); // 未指定は face-vrm の既定に任せる
   try {
     const head = await fetch(modelUrl, { method: 'HEAD' });
     if (!head.ok) return; // モデルが無ければ CSS のまま（既定の床）
     const mod = await import('./face-vrm.js');     // 動的 import：iOS12 はここで reject → catch
-    const vrm = await mod.createVRMFace({ scene, modelUrl });
+    // 向き・距離・高さ・腕角は実機から ?turn= ?dist= ?y= ?arms= で微調整できる
+    const vrm = await mod.createVRMFace({
+      scene, modelUrl, turn: num('turn'), dist: num('dist'), yOffset: num('y'), arms: num('arms'),
+    });
     cssFace.presence(false);                        // CSS の卵を退場
     document.getElementById('tatazuka').hidden = true;
     activeFace = vrm;
