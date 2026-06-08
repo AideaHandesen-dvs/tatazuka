@@ -7,7 +7,8 @@
 |---|---|
 | `serve.js` | エントリ。HTTPS 静的配信（client/）＋ WS を同一オリジンに張る |
 | `ws.js` | 依存ゼロの WebSocket（RFC6455）。`upgrade` に相乗り。マスク解除・フレーム生成・ping/pong・close |
-| `behavior.js` | 佇かの振る舞い（人格の素）。protocol v0 を server 側として実装。**M4 でここを育てる** |
+| `behavior.js` | 「**いつ・どんな状況で喋るか**」（トリガ・間・presence/motion の副作用）。protocol v0 の server 側 |
+| `persona.js` | 「**何を喋るか**」（situation タグ → 台詞）。**LLM の継ぎ目はここ**。M4 はルールベース |
 
 ## 動かし方
 
@@ -27,6 +28,24 @@ PORT=9000 node server/serve.js
   トランスポート非依存（`createSession({send})→{receive,close}`）。接続ごとのタイマーは `close()` で掃除する。
 - 再接続時の hello 打ち直し（protocol §6-2）は **client 側の `ws-client.js`** が担当。server は
   毎回新規接続として扱い、`resumed:true` の hello を見たら「落ちてたぞ」と茶々を入れる（§6-3）。
+
+## 人格エンジン（M4）
+
+**「いつ喋るか」(behavior) と「何を喋るか」(persona) を分離**した。ハイブリッド方針：M4 は
+ルールベースで完結（軽い・オフライン・予測可能）、LLM は後で persona を差し替えて足す。
+LLM が無くても佇かは喋る＝人格層でもプログレッシブ・エンハンスメント。
+
+- `persona.js` の `createPersona().line(situation, ctx)` が **台詞生成の継ぎ目**。situation タグ
+  （例 `greet` / `work.180` / `sense.nade.warm`）→ `{text, mood}`。未知の situation は `null`（＝喋らない）。
+  将来の LLM 版はこの `line()` と同じ顔で実装すれば behavior.js を一切触らず差し替わる。
+- イベント源（M4 で実装）：
+  1. **触られた**（sense → 段階反応。protocol §5）
+  2. **時刻帯**（朝/昼/夕/夜/深夜。在席中にバンドをまたぐと一言＋深夜接続には就寝を促す）
+  3. **在席・連続時間**（接続継続を「作業時間」の代理に。60/120/180 分で「3時間やってるぞ」系）
+- **PC作業監視・天気・LLM は別マイルストーン**。在席時間は PC 監視の要らない代理指標
+  （ただし再接続で連続時間はリセットされる。§6-2 で server は接続をまたがないため。M4 の割り切り）。
+- `createSession({ send, persona?, now?, tickMs? })`：`now`/`tickMs` はテスト・デモで「間」を
+  早送りするための注入（既定は実時間）。例：`tickMs: 5, now: ()=>fakeClock` で 3 時間ナグを即確認できる。
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
 
