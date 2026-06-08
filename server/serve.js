@@ -78,5 +78,9 @@ attachWS(server, '/ws', (sock) => {
 
 server.listen(PORT, () => {
   console.log(`佇か → https://localhost:${PORT}/  （wss://localhost:${PORT}/ws）`);
-  console.log(process.env.TZ_LLM ? `人格: LLM persona（${process.env.TZ_LLM}）` : '人格: ルールベース');
+  console.log(
+    process.env.TZ_LLM
+      ? `人格: LLM persona（${process.env.TZ_LLM} / ${process.env.TZ_CHARACTER || 'tatazuka'}）`
+      : '人格: ルールベース',
+  );
 });

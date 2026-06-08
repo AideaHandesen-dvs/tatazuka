@@ -9,6 +9,7 @@
 //   - line() は async。behavior.js の say が await する（生成は喋る瞬間に走る）。
 // provider は ollama / claude を env で両対応。依存ゼロのためグローバル fetch のみ（SDK なし）。
 
+import { readFileSync } from 'node:fs';
 import { createPersona } from './persona.js';
 
 const TIMEOUT_MS = 8000; // 生成がこれを超えたら諦めてルール表へ（佇かを黙らせない）
@@ -34,10 +35,12 @@ const LLM_SITUATIONS = {
 };
 
 // ── キャラクター定義（＝差し替え対象の「ゴースト」）────────────────────────
-// ベースモデルは素の汎用エンジン（Modelfile にキャラを焼かない）。キャラはここ＝
-// 呼び出し側のデータで持つので、別キャラに丸ごと差し替えられる（伺か/何かのゴースト文化）。
-// 将来この CHARACTER をファイル/env から読めるようにすれば「器」が完成する。
-const CHARACTER = `あなたはデスクトップマスコット「佇か（たたずか）」。伺かの精神的後継で、ユーザーの端末の中に静かに「佇んで」いて、ときどき茶々を入れてくる存在。
+// ベースモデルは素の汎用エンジン（Modelfile にキャラを焼かない）。キャラは呼び出し側の
+// データで持つので別キャラに丸ごと差し替えられる（伺か/何かのゴースト文化）。実体は
+// characters/<名前>.txt（1 ゴースト＝1 ファイル。伺かの ghost/<名前>/ を一枚に簡略化）。
+// TZ_CHARACTER で名前を選ぶ（既定 tatazuka）。下の DEFAULT_CHARACTER はファイルが読めない
+// ときの安全網＝ディレクトリごと消しても佇かは喋る（§5 プログレッシブ・エンハンスメント）。
+export const DEFAULT_CHARACTER = `あなたはデスクトップマスコット「佇か（たたずか）」。伺かの精神的後継で、ユーザーの端末の中に静かに「佇んで」いて、ときどき茶々を入れてくる存在。
 
 # 基本設定
 - 名前：佇か（たたずか）
@@ -50,13 +53,35 @@ const CHARACTER = `あなたはデスクトップマスコット「佇か（た�
 - 短く言う。1文、長くても2文。説明や前置きはしない。`;
 
 // ── 出力プロトコル（＝tatazuka 側の固定。キャラを差し替えても変わらない）──────
+// ゴーストを丸ごと差し替えても、JSON 契約と mood 語彙（protocol §4-3）はここで担保する。
 const OUTPUT_RULE = `# 出力
 - 与えられた「状況」に対するこのキャラの一言だけを作る。
 - 必ず次の JSON だけを出力する。前後に説明・コードブロック・余計な文字を付けない：
   {"text": "<台詞>", "mood": "<気分>"}
 - mood は次のどれか一つ：通常 / 呆れ / 疑い / 喜び / 怒り / 照れ`;
 
-const PERSONA = `${CHARACTER}\n\n${OUTPUT_RULE}`;
+// TZ_CHARACTER の名前で characters/<名前>.txt を読む。読めなければ DEFAULT_CHARACTER。
+// 名前は英数 _ - のみ許可（パストラバーサル防止。../ 等は弾いて安全網へ）。
+export function loadCharacter(env) {
+  const e = env || process.env;
+  const name = e.TZ_CHARACTER || 'tatazuka';
+  if (/^[\w-]+$/.test(name)) {
+    try {
+      // モジュール基準で解決（cwd に依存しない）。ファイルは人格文のみ＝OUTPUT_RULE は含めない
+      const text = readFileSync(new URL(`./characters/${name}.txt`, import.meta.url), 'utf8').trim();
+      if (text) return text;
+    } catch {
+      // 読めない → 安全網へ（佇かは喋る）
+    }
+  }
+  if (name !== 'tatazuka') console.warn(`[persona] character "${name}" を読めず、既定の佇かにフォールバック`);
+  return DEFAULT_CHARACTER;
+}
+
+// system プロンプト＝ゴースト（差し替え可）＋出力契約（固定）
+function buildSystem(character) {
+  return `${character}\n\n${OUTPUT_RULE}`;
+}
 
 function buildUser(desc, ctx) {
   const label = ctx && ctx.label ? ctx.label : '名無し';
@@ -138,11 +163,13 @@ export function createProvider(env) {
 }
 
 // persona.js と同じ顔。ただし line() は async（生成を待つ）。
-// opts.provider / opts.fallback はテスト注入用。
+// opts.provider / opts.fallback / opts.character / opts.env はテスト注入用。
 export function createLLMPersona(opts) {
   opts = opts || {};
   const rule = opts.fallback || createPersona();      // フォールバックの“床”
-  const provider = opts.provider || createProvider(); // null なら全部ルールに委譲
+  const provider = opts.provider || createProvider(opts.env); // null なら全部ルールに委譲
+  // ゴーストは生成時に一度だけ確定（接続ごと。TZ_CHARACTER / characters/ を反映）
+  const system = buildSystem(opts.character || loadCharacter(opts.env));
   return {
     async line(situation, ctx) {
       const desc = LLM_SITUATIONS[situation];
@@ -152,7 +179,7 @@ export function createLLMPersona(opts) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
       try {
-        const raw = await provider.generate(PERSONA, buildUser(desc, ctx), ctrl.signal);
+        const raw = await provider.generate(system, buildUser(desc, ctx), ctrl.signal);
         const ln = parseLine(raw);
         if (ln) return ln;
       } catch (e) {

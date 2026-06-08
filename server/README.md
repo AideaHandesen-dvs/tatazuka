@@ -94,8 +94,15 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 |---|---|---|
 | `TZ_LLM` | （未設定＝LLM オフ） | `ollama` か `claude`。未設定なら `serve.js` は従来のルール persona を使う |
 | `TZ_LLM_MODEL` | provider 既定 | モデル名 |
+| `TZ_CHARACTER` | `tatazuka` | ゴースト（人格）を名前で選ぶ → `characters/<名前>.txt`。LLM 有効時のみ効く |
 | `OLLAMA_HOST` | `http://localhost:11434` | ollama 接続先 |
 | `ANTHROPIC_API_KEY` | — | `claude` 時のみ必須 |
+
+**キャラは差し替えられる（ゴースト）。** `CHARACTER`（誰か＝差し替え対象）と `OUTPUT_RULE`
+（tatazuka 固定の JSON 出力契約）を分離してある。人格は `characters/<名前>.txt` に外出しされ、
+`TZ_CHARACTER` で選ぶ（既定 `tatazuka`、同梱に執事 `shitsuji`・妹 `imouto`）。読めなければ組み込みの
+佇かにフォールバック＝ゴーストを全部消しても佇かは喋る。足し方・フォーマットは
+[characters/README.md](characters/README.md)。伺かの `ghost/<名前>/` を 1 ファイルに簡略化したもの。
 
 - **ollama**：`POST {OLLAMA_HOST}/api/chat`（`stream:false`, `format:"json"`）。既定モデルは環境依存
   なので `TZ_LLM_MODEL` で指定（例 `qwen2.5:3b` 等の軽量モデル）。オフライン・無料・ローカル完結。
