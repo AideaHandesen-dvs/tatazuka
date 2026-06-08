@@ -25,14 +25,14 @@
 | M3 | 依存ゼロ WebSocket サーバー（[server/](server/README.md)） | ✅ |
 | M4 | 人格・イベント処理 | 🚧 ルールベース＋**LLM persona 差し替え**＋**ゴースト差し替え**＋**天気・作業監視イベント** |
 | 顔 | VRM アバター＋CSS フォールバック | ✅ Android 実機で確認 |
-| M5 | OpenCLAW / スタックチャン連携（connectors/） | ⬜ これから |
+| M5 | OpenCLAW / スタックチャン連携（[connectors/](connectors/README.md)） | 🚧 土台＋設計メモ（二つの契約の所在を確定） |
 
 **喋る言葉も差し替えられる** — 「何を喋るか」を LLM 生成に格上げできる（ollama / Claude API 両対応）。
 人格そのもの（ゴースト）も `characters/<名前>.txt` で丸ごと差し替えられる（伺かの ghost 文化）。
 LLM が無くても・遅くても佇かは手書きの台詞で喋る（[server/README.md](server/README.md) の「LLM persona」）。
 **天気にも反応する** — 都市を設定すると、雨の降り始めや暑さ寒さに茶々を入れる（Open-Meteo・キー不要）。
 **作業も見ている** — 同じ PC 上で動くので、長く席を外すと「どこ行った」、戻ると気づく（idle 検知・X11/Wayland）。
-次の一手：connectors（OpenCLAW・Home Assistant 等）／アクティブウィンドウ監視。
+次の一手：connectors（[connectors/](connectors/README.md) に土台あり）—— Home Assistant 等を situation の蛇口に挿す「入力」と、物理スタックチャンを表示先にする「出力」の二方向。
 
 ---
 
@@ -219,6 +219,8 @@ OpenCLAW  ⇄  佇か本体  ⇄  表示クライアント（ブラウザ / 物�
 
 protocol の封筒を `{type, data}` に分離してあるのは、この「封筒を見て中身を開けずに転送する」ハブの仕事への先払い（[protocol/README.md](protocol/README.md) §2）。
 
+connector は二つの顔を持ち、**どちらの契約も既存の決定が先に定義済み**——「入力」（外の出来事 → situation。§6-4 のイベント源パターン）と「出力」（佇かの語彙を別の身体で再生。封筒分離＋意味論型語彙 §4-1 で物理スタックチャンは「v0 を喋るもう一つの client」になる）。connectors/ は新 protocol を発明せず、第三者アダプタの置き場にとどまる。詳細と土台は [connectors/README.md](connectors/README.md)。
+
 ## 8. 作業規律（重要）
 
 - **`protocol/` が server と client の契約。** プロトコル変更は必ず両側を同じセッションで直す。片側だけのその場調整は禁止。
@@ -238,7 +240,7 @@ protocol の封筒を `{type, data}` に分離してあるのは、この「封�
 | M4 | 人格・イベント処理 | 🚧 behavior＝いつ喋るか / persona＝何を喋るか に分離。ルールベース＋**LLM persona**＋**ゴースト差し替え（characters/）**＋**天気・作業監視イベント** |
 | 天気 | 外部イベント源パターンの初例（Open-Meteo・キー不要・PE） | ✅ 2026-06-09 |
 | PC作業監視 | 離席/復帰の idle 検知（X11/Wayland・PE・在席時間に縮退）。アクティブウィンドウは未着手 | ✅ 2026-06-09 |
-| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | ⬜ |
+| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 土台＋設計メモ。入力（イベント源）／出力（表示先）の二契約の所在を確定・入力の契約テンプレ |
 
 ---
 
