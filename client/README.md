@@ -67,6 +67,10 @@ cp ~/somewhere/youravatar.vrm client/models/tatazuka.vrm
 - `models/` は **git 管理外**（ライセンス・サイズのため同梱しない）。
 - VRM0 / VRM1 どちらも可。three-vrm が向きを正規化し、face-vrm がカメラ側を向かせる。
 - カメラのフレーミング（`baseR` ＝ 顔までの距離）はモデルの背丈で多少ズレうる。face-vrm.js で調整。
+- 向き・寄り・高さ・腕角は実機から微調整できる：`?turn=`（半回転数, 既定1）`?dist=`（顔までの距離, 既定0.95）
+  `?y=`（注視点の高さ補正）`?arms=`（腕下げ角 rad, 既定1.0）。
+- **2026-06-08 実機検証**：Android Chrome（WebGL2）で aya（VRM0.x）を確認。**既定値のまま**
+  正面・フレーミング・腕・視線追従・吹き出し すべて良好。iOS 12 の iPad は設計通り CSS の卵にフォールバック。
 
 ### face-vrm が実装する見た目
 
