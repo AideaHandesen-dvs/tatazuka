@@ -14,10 +14,14 @@ import { attachWS } from './ws.js';
 import { createSession } from './behavior.js';
 import { createPersona } from './persona.js';
 import { createLLMPersona } from './persona-llm.js';
+import { createWeather } from './weather.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
 // どちらも line() の顔が同じなので behavior.js からは区別がつかない。
 const makePersona = process.env.TZ_LLM ? createLLMPersona : createPersona;
+// TZ_CITY または TZ_LAT/TZ_LON があれば天気イベント源を足す（無ければ null＝天気に触れない）。
+// 変化検知の状態を端末ごとに独立させたいので、接続のたびに作る（各端末が天気に反応する）。
+const weatherOn = !!(process.env.TZ_CITY || (process.env.TZ_LAT && process.env.TZ_LON));
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -71,7 +75,7 @@ const server = https.createServer(
 
 // ---- WebSocket（protocol v0）。同一オリジンの /ws に張る ----
 attachWS(server, '/ws', (sock) => {
-  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona() });
+  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona(), weather: createWeather() });
   sock.onMessage((msg) => session.receive(msg));
   sock.onClose(() => session.close());
 });
@@ -83,4 +87,5 @@ server.listen(PORT, () => {
       ? `人格: LLM persona（${process.env.TZ_LLM} / ${process.env.TZ_CHARACTER || 'tatazuka'}）`
       : '人格: ルールベース',
   );
+  console.log(weatherOn ? `天気: on（${process.env.TZ_CITY || `${process.env.TZ_LAT},${process.env.TZ_LON}`}）` : '天気: off');
 });

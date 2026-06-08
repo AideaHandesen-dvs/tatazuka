@@ -32,6 +32,14 @@ const LLM_SITUATIONS = {
   'work.60':        'ユーザーが1時間ぶっ通しで作業している。一息つけと促す',
   'work.120':       'ユーザーが2時間ぶっ通しで作業している。目を休めろと促す',
   'work.180':       'ユーザーが3時間ぶっ通しで作業している。さすがに休憩しろと促す',
+  // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
+  'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
+  'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
+  'weather.rain.stop': '降っていた雨が上がった',
+  'weather.snow':      '雪が降りだした。珍しいので少しそわそわしている',
+  'weather.thunder':   '雷が鳴っている。家電を気づかう',
+  'weather.hot':       '気温が高い。水分をとるよう促す',
+  'weather.cold':      '気温が低い。あたたかくするよう促す',
 };
 
 // ── キャラクター定義（＝差し替え対象の「ゴースト」）────────────────────────
@@ -85,7 +93,14 @@ function buildSystem(character) {
 
 function buildUser(desc, ctx) {
   const label = ctx && ctx.label ? ctx.label : '名無し';
-  return `状況: ${desc}\n部屋（端末）の名前: ${label}\nこの状況での佇かの一言を JSON で出せ。`;
+  let lines = `状況: ${desc}\n部屋（端末）の名前: ${label}`;
+  // 天気 situation のときは今の空模様・気温を添える（生成に織り込ませる）
+  const w = ctx && ctx.weather;
+  if (w) {
+    const place = w.city ? `${w.city}は` : '';
+    lines += `\n今の天気: ${place}${w.desc}、気温${Math.round(w.tempC)}度`;
+  }
+  return `${lines}\nこの状況でのこのキャラの一言を JSON で出せ。`;
 }
 
 // LLM の生テキストから最初の {...} を取り出し、{text,mood} に検証して返す。壊れていれば null

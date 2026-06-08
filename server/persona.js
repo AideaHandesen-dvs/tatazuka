@@ -37,6 +37,16 @@ const TABLES = {
   'work.120':[['2時間ぶっ通しだぞ。目、休めてるか？', '疑い']],
   'work.180':[['それ3時間やってるぞ。…休憩しろって。', '呆れ']],
 
+  // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
+  // LLM persona はここを ctx.weather 込みで生成に格上げする）
+  'weather.morning':   [['ん、朝か。空、見たか？', '通常']],
+  'weather.rain.start':[['雨、降ってきたぞ。傘は持ったのか？', '疑い']],
+  'weather.rain.stop': [['雨、上がったみたいだな。', '通常']],
+  'weather.snow':      [['雪だ。…ちょっと、見に行くか？', '喜び']],
+  'weather.thunder':   [['雷、鳴ってるぞ。コンセント、抜いとけよ。', '怒り']],
+  'weather.hot':       [['暑いな。…水ぐらい飲めよ。', '呆れ']],
+  'weather.cold':      [['冷えるぞ。一枚、羽織れ。', '通常']],
+
   // 触られたとき（protocol §5 の sense を段階で）
   'sense.poke.soft': [['ん、なんだ？', '疑い']],
   'sense.poke.mid':  [['いてっ。', '怒り']],

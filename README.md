@@ -23,13 +23,15 @@
 | M1 | protocol v0 策定（[protocol/](protocol/README.md)） | ✅ |
 | M2 | 表示クライアント単体プロト（[client/](client/README.md)） | ✅ iPad 実機で確認 |
 | M3 | 依存ゼロ WebSocket サーバー（[server/](server/README.md)） | ✅ |
-| M4 | 人格・イベント処理 | 🚧 ルールベース＋**LLM persona 差し替え対応** |
+| M4 | 人格・イベント処理 | 🚧 ルールベース＋**LLM persona 差し替え**＋**ゴースト差し替え**＋**天気イベント** |
 | 顔 | VRM アバター＋CSS フォールバック | ✅ Android 実機で確認 |
 | M5 | OpenCLAW / スタックチャン連携（connectors/） | ⬜ これから |
 
 **喋る言葉も差し替えられる** — 「何を喋るか」を LLM 生成に格上げできる（ollama / Claude API 両対応）。
+人格そのもの（ゴースト）も `characters/<名前>.txt` で丸ごと差し替えられる（伺かの ghost 文化）。
 LLM が無くても・遅くても佇かは手書きの台詞で喋る（[server/README.md](server/README.md) の「LLM persona」）。
-次の一手：PC 作業監視 ／ 天気。
+**天気にも反応する** — 都市を設定すると、雨の降り始めや暑さ寒さに茶々を入れる（Open-Meteo・キー不要）。
+次の一手：PC 作業監視 ／ connectors（OpenCLAW・Home Assistant 等）。
 
 ---
 
@@ -202,9 +204,10 @@ protocol の封筒を `{type, data}` に分離してあるのは、この「封�
 | M2 | 表示クライアント単体プロト（iPad 実機で「箱の中」確認） | ✅ 2026-06-08 |
 | M3 | 依存ゼロ WebSocket サーバー（protocol v0 を実装で裏付け） | ✅ 2026-06-08 |
 | 顔 | VRM アバター＋CSS フォールバック（Android 実機で確認） | ✅ 2026-06-08 |
-| M4 | 人格・イベント処理 | 🚧 behavior＝いつ喋るか / persona＝何を喋るか に分離。ルールベース＋**LLM persona 差し替え（ollama / Claude API 両対応）** |
-| — | PC 作業監視（X11/Wayland 依存で別マイルストーン）・天気 | ⬜ |
-| M5 | connectors/（OpenCLAW・スタックチャン連携） | ⬜ |
+| M4 | 人格・イベント処理 | 🚧 behavior＝いつ喋るか / persona＝何を喋るか に分離。ルールベース＋**LLM persona**＋**ゴースト差し替え（characters/）**＋**天気イベント（Open-Meteo）** |
+| — | PC 作業監視（X11/Wayland 依存で別マイルストーン） | ⬜ |
+| 天気 | 外部イベント源パターンの初例（Open-Meteo・キー不要・PE） | ✅ 2026-06-09 |
+| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | ⬜ |
 
 ---
 

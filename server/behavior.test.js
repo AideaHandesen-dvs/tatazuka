@@ -55,6 +55,85 @@ test('正常時：生成が close 前に返れば say は送られる', async (t
   s.close();
 });
 
+// situation と ctx を記録する persona（text に situation をそのまま載せて追える）
+function recordingPersona(seen) {
+  return { line: (s, ctx) => { seen.push({ s, ctx }); return { text: s, mood: '通常' }; } };
+}
+const flush = async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); };
+const HELLO = { type: 'hello', data: { protocol: 0, label: '居間' } };
+
+test('天気：poll が situation を返したら ctx 込みで say する', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [], seen = [];
+  const weather = {
+    async poll() { return { situation: 'weather.rain.start', ctx: { weather: { desc: '雨', tempC: 18 } } }; },
+    async current() { return null; },
+  };
+  const FIXED = new Date('2026-06-09T14:00:00').getTime(); // 昼。バンド変化を起こさない固定時刻
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona(seen), weather, now: () => FIXED, tickMs: 10, weatherMs: 1 });
+
+  s.receive(HELLO);
+  t.mock.timers.tick(10); // 最初の tick で weatherTick が poll を撃つ
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'weather.rain.start'), '天気の say が飛ぶ');
+  const w = seen.find((x) => x.s === 'weather.rain.start');
+  assert.equal(w.ctx.weather.desc, '雨', '天気 ctx が persona に届く');
+  assert.equal(w.ctx.label, '居間', '基底 ctx（label）に重ねて渡る');
+  s.close();
+});
+
+test('天気：朝は weather.current で weather.morning を喋る', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [], seen = [];
+  const weather = {
+    async poll() { return null; },
+    async current() { return { situation: 'weather.morning', ctx: { weather: { desc: '快晴', tempC: 20 } } }; },
+  };
+  let nowVal = new Date('2026-06-09T23:00:00').getTime(); // 接続時は夜
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona(seen), weather, now: () => nowVal, tickMs: 10, weatherMs: 1 });
+
+  s.receive(HELLO);
+  nowVal = new Date('2026-06-09T07:00:00').getTime(); // 朝へバンドが変わる
+  t.mock.timers.tick(10);
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'weather.morning'), '朝は weather.morning');
+  assert.ok(!sent.some((m) => m.data && m.data.text === 'time.morning'), 'time.morning には縮退しない');
+  s.close();
+});
+
+test('天気：朝でも current が取れなければ time.morning に縮退', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [];
+  const weather = { async poll() { return null; }, async current() { return null; } };
+  let nowVal = new Date('2026-06-09T23:00:00').getTime();
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona([]), weather, now: () => nowVal, tickMs: 10, weatherMs: 1 });
+
+  s.receive(HELLO);
+  nowVal = new Date('2026-06-09T07:00:00').getTime();
+  t.mock.timers.tick(10);
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'time.morning'), '天気が取れなければ従来の朝挨拶');
+  s.close();
+});
+
+test('天気オフ（weather 未注入）でも朝挨拶は出る（PE）', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [];
+  let nowVal = new Date('2026-06-09T23:00:00').getTime();
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona([]), now: () => nowVal, tickMs: 10 });
+
+  s.receive(HELLO);
+  nowVal = new Date('2026-06-09T07:00:00').getTime();
+  t.mock.timers.tick(10);
+  await flush();
+
+  assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'time.morning'));
+  s.close();
+});
+
 test('protocol 不一致の hello は error を返し、人格は動かさない', () => {
   const sent = [];
   const s = createSession({ send: (m) => sent.push(m), persona: { line: () => ({ text: 'x', mood: '通常' }) } });

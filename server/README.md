@@ -32,6 +32,9 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
 - **実 LLM スモーク**（`persona-llm.smoke.test.js`）：ローカル ollama に 1 回投げ、出力契約が
   本当に通るか確認。**ollama 不在なら自動 skip**（CI/ネット不要を維持）。`TZ_SMOKE_MODEL` で
   モデル上書き（既定 `qwen2.5:3b`）。
+- **天気イベント源**（`weather.test.js`）：fetch を注入し、降水の遷移検知（降り始め/上がり）・
+  気温の極端を一度だけ・geocoding の一度きり解決・取得失敗時の縮退を固定。behavior 側の配線
+  （poll を ctx 込みで say・朝の `weather.morning` 縮退）は `behavior.test.js`。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
@@ -97,6 +100,8 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 | `TZ_CHARACTER` | `tatazuka` | ゴースト（人格）を名前で選ぶ → `characters/<名前>.txt`。LLM 有効時のみ効く |
 | `OLLAMA_HOST` | `http://localhost:11434` | ollama 接続先 |
 | `ANTHROPIC_API_KEY` | — | `claude` 時のみ必須 |
+| `TZ_CITY` | — | 天気の場所（都市名。例 `Tokyo`）。設定すると天気イベントが有効になる |
+| `TZ_LAT` / `TZ_LON` | — | 緯度経度で直接指定（あれば geocoding を飛ばす。`TZ_CITY` より優先） |
 
 **キャラは差し替えられる（ゴースト）。** `CHARACTER`（誰か＝差し替え対象）と `OUTPUT_RULE`
 （tatazuka 固定の JSON 出力契約）を分離してある。人格は `characters/<名前>.txt` に外出しされ、
@@ -125,6 +130,31 @@ TZ_LLM=claude TZ_LLM_MODEL=claude-haiku-4-5 ANTHROPIC_API_KEY=sk-ant-... node se
 
 # 何も指定しなければ従来どおりルールベースで動く（LLM 不要）
 node server/serve.js
+```
+
+### 天気（イベント源・`weather.js`）— 「いつ喋るか」の新しい蛇口
+
+時刻帯・在席時間に続く 3 つ目の能動イベント源。**外部イベント源 → situation タグ → 人格層**という
+パターンの最初の実例（将来 connectors/ で Home Assistant 等を同じ蛇口に挿す布石）。
+
+- **provider は Open-Meteo（APIキー不要・無料）**。依存ゼロのためグローバル `fetch` のみ。
+  `TZ_CITY` を geocoding で lat/lon に解決（起動時一度・キャッシュ）。`TZ_LAT/TZ_LON` があれば直接使う。
+- **protocol は不変**。天気は `say`（situation タグ）に乗るだけ＝client は触らない。server 完結。
+- **PE**：場所未設定・API 不達・都市が解決できない → 天気イベントは出ない。佇かは喋る。
+- **変化を喋る**（毎回ではなく遷移を）：`weather.js` の `poll()` を 30 分間隔で呼び、降水の遷移
+  （`weather.rain.start` / `.rain.stop` / `.snow` / `.thunder`）と気温の極端（`weather.hot` /
+  `.cold`、閾値帯に入った瞬間だけ）を検知。朝は `current()` で `weather.morning`（取れなければ
+  `time.morning` に縮退）。
+- **ctx.weather**（今の空模様・気温・都市）を persona に渡す。LLM persona はそれを台詞に織り込む
+  （ルール表は固定台詞）。
+- weather は**接続ごとに作る**（変化検知の状態を端末ごとに独立させ、複数端末が各々天気に反応する）。
+
+```sh
+# 天気を有効化（都市名）。LLM と併用すると台詞に空模様が乗る
+TZ_CITY=Tokyo TZ_LLM=ollama TZ_LLM_MODEL=qwen2.5:3b node server/serve.js
+
+# 緯度経度で直接（geocoding を飛ばす）
+TZ_LAT=35.68 TZ_LON=139.69 node server/serve.js
 ```
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
