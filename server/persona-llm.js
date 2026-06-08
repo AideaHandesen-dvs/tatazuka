@@ -22,6 +22,7 @@ const MOODS = new Set(['通常', '呆れ', '疑い', '喜び', '怒り', '照れ
 const LLM_SITUATIONS = {
   'greet':          '初めてこの部屋（端末）に出てきたところ。軽く挨拶する',
   'greet.resumed':  '接続が切れて、自動でこの部屋に戻ってきた直後',
+  'greet.reunion':  'この端末（部屋）に、前に見てからしばらくぶりに再会した。間隔（ctx.since）に軽く触れて迎える',
   'idle':           '特に用事はないが、間が空いたのでふと一言こぼす',
   'walk.back':      'ちょっと留守にしていて、いま戻ってきた',
   'desk.away':      'ユーザーがしばらくキーボードを離れて、席を外したらしい',
@@ -103,8 +104,12 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   let s = `状況: ${desc}`;
   // 部屋（端末）の名前は挨拶のときだけ意味がある。常に渡すと毎回機械的に名前を口にして
   // 定型文っぽくなるので、greet 系だけ添える（しかも label があるときだけ）。
-  if ((situation === 'greet' || situation === 'greet.resumed') && ctx && ctx.label) {
+  if ((situation === 'greet' || situation === 'greet.resumed' || situation === 'greet.reunion') && ctx && ctx.label) {
     s += `\nこの部屋（端末）の名前: ${ctx.label}`;
+  }
+  // 再会の間隔（greet.reunion）。「N分ぶり」のように前回からの隔たりを添える
+  if (situation === 'greet.reunion' && ctx && ctx.since) {
+    s += `\n前に見てからの間隔: ${ctx.since}`;
   }
   // 天気 situation のときは今の空模様・気温を添える（生成に織り込ませる）
   const w = ctx && ctx.weather;

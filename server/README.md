@@ -8,6 +8,7 @@
 | `serve.js` | エントリ。HTTPS 静的配信（client/）＋ WS を同一オリジンに張る |
 | `ws.js` | 依存ゼロの WebSocket（RFC6455）。`upgrade` に相乗り。マスク解除・フレーム生成・ping/pong・close |
 | `hub.js` | **仲介ハブ**。複数の部屋（接続）を束ね、佇かを「一度に一箇所」に居させる（presence ルーティング・protocol §6-1） |
+| `reunion.js` | **再会の記憶**。label ごとに最後に見た時刻を覚え、再接続時に「3分ぶりだな」と言及（§6-3） |
 | `behavior.js` | 一部屋ぶんの脳。「**いつ・どんな状況で喋るか**」＋活性（activate/deactivate）。protocol v0 の server 側 |
 | `persona.js` | 「**何を喋るか**」（situation タグ → 台詞）。**台詞生成の継ぎ目**。ルールベース（手書き表） |
 | `persona-llm.js` | persona の LLM 版。同じ `line()` の顔で、環境系の台詞だけ LLM 生成（反応系・失敗時は `persona.js` にフォールバック） |
@@ -31,6 +32,8 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
 - **プレゼンス＝一度に一箇所**（`hub.test.js`）：最初の部屋に居つく・先客が居れば後の部屋は空き・
   空き部屋を つつくと移動（挨拶せず反応）・occupant 離脱で残った部屋へ移る・broadcast 退化形・
   protocol 不一致は occupant にしない。本物の脳＋persona を通した統合テスト。
+- **再会の記憶**（`reunion.test.js` / `behavior.test.js`）：label ごとの最終時刻・未命名は覚えない・
+  間隔の人間化（分/時間/日）と、間隔が空いた再接続で `greet.reunion` を間隔つきで言う／短ければ素の greet。
 - **provider のリクエスト整形**（`persona-llm.provider.test.js`）：fetch をスタブし、ollama は
   `format:json`、claude は temperature 等を**送らない**（Opus 4.8 で 400 の地雷）ことを固定。
 - **実 LLM スモーク**（`persona-llm.smoke.test.js`）：ローカル ollama に 1 回投げ、出力契約が
@@ -76,6 +79,17 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
 > 注意（M4 の割り切り）：脳は今も**接続（部屋）ごと**なので、別の部屋へ移ると連続作業時間
 > （work.60/120/180 の時計）はリセットされる（再接続でリセットされるのと同じ。§6-2）。一つの脳を
 > 部屋をまたいで連続させる統合は将来。
+
+### 再会の記憶（`reunion.js`・protocol §6-3）
+
+接続をまたぐのは捨てる方針（§6-2）だが、**label ごとの「最後に見た時刻」だけ**はプロセスに覚えておく。
+再接続して佇かがその部屋に入ると「居間、3分ぶりだな」と間隔に言及できる＝落ちたことを隠さず人格の材料にする。
+
+- `createReunion()` をプロセスに一つ作り、全部屋（接続）で共有する（serve.js が注入）。記憶は label→最終時刻だけ。
+- 切断時に `mark(label, now)`、入室の挨拶で `seen(label)` を引いて間隔を出す。間隔が **1分以上**なら
+  `greet.reunion`（ctx.since に「N分」/「N時間」/「N日」）、短ければ resumed の「落ちてたぞ」、初見は素の greet。
+- **PE**：未命名（label 無し）の端末は覚えない。reunion 未注入なら間隔に触れない（佇かは普通に挨拶する）。
+- 部屋移動（つつかれて別室へ）は切断ではないので mark しない＝「移動」と「再会」を取り違えない。
 
 ## 人格エンジン（M4）
 

@@ -13,7 +13,9 @@
 // 一様に扱う（sources）。LLM persona は別の継ぎ目（persona-llm.js）。
 
 import { createPersona } from './persona.js';
+import { humanizeGap } from './reunion.js';
 
+const REUNION_MIN_MS = 60 * 1000;  // この間隔以上あいて再接続したら「N分ぶりだな」と言及（§6-3）
 const TICK_MS = 30000;             // 時刻帯・在席時間・暇つぶしを刻む間隔
 const WEATHER_MS = 30 * 60 * 1000; // 天気を見直す間隔（変化はゆっくり。tick とは別サイクル）
 const WORK_MARKS = [60, 120, 180]; // 在席ぶっ通しで茶々を入れる分
@@ -36,8 +38,9 @@ function timeBand(hour) {
 //   - managed=true（hub 配下）：活性は hub が activate()/deactivate() で制御する（一度に一箇所）。
 //   present(here) は presence の出口（既定は send。hub は自分の出口を注入）。onReady は hello 成立の
 //   合図（hub が部屋として迎え入れる）。onActive(bool) は活性の変化を hub に知らせる（出力の関所用）。
+// opts.reunion は再会の記憶（任意・接続をまたぐ共有ストア。reunion.js）。無ければ間隔に言及しない（PE）。
 export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity, sources,
-                               present, managed, onReady, onActive }) {
+                               present, managed, onReady, onActive, reunion }) {
   const p = persona || createPersona();
   const clock = now || Date.now;
   const interval = tickMs || TICK_MS;
@@ -71,6 +74,7 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
   let active = false;        // この部屋に佇かが居るか（居る間だけ喋る/動く）
   let resumed = false;       // 直近の hello が resumed 申告だったか（活性化時の挨拶に効く）
   let helloCaps = {};        // 直近の hello の caps（活性化時の許可ねだりに使う）
+  let helloLabel = null;     // 直近の hello の label（再会の記憶のキー。未命名なら覚えない）
   let connectStart = 0;
   let lastBand = null;
   let lastWeatherAt = 0; // 直近に天気を見た時刻（0＝まだ。最初の tick で一度見る）
@@ -142,7 +146,18 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     notifyActive(true);
     showPresence(true);
     if (opts && opts.greet === false) return;
-    later(() => say(resumed ? 'greet.resumed' : 'greet'), 800); // 落ちたことは茶々に（§6-3）
+    // 再会の記憶：この端末を前に見ていて、間隔がそこそこ空いていれば「N分ぶりだな」（§6-3）。
+    // 短い間隔は resumed の「落ちてたぞ」、初見/記憶なしは素の greet に落ちる。
+    let greet = resumed ? 'greet.resumed' : 'greet';
+    let greetCtx;
+    if (reunion && helloLabel) {
+      const last = reunion.seen(helloLabel);
+      if (last != null && clock() - last >= REUNION_MIN_MS) {
+        greet = 'greet.reunion';
+        greetCtx = { since: humanizeGap(clock() - last) };
+      }
+    }
+    later(() => say(greet, greetCtx), 800);
     if (lastBand === 'deepnight') later(() => say('time.deepnight'), 4000); // 深夜の接続には一言
     if (helloCaps.orientation === 'ask') later(() => say('nudge.orientation'), 7000);
     if (helloCaps.camera === 'ask') later(() => say('nudge.camera'), 14000);
@@ -161,6 +176,7 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     helloDone = true;
     resumed = !!d.resumed;
     helloCaps = d.caps || {};
+    helloLabel = d.label || null; // 再会の記憶のキー（未命名は覚えない）
     connectStart = clock();
     lastBand = timeBand(new Date(clock()).getHours()); // 接続時のバンドは「またいだ」扱いにしない
     if (d.label) ctx.label = d.label;
@@ -218,6 +234,8 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     activate,    // hub が「この部屋に入った」と告げる（managed 時）。単体時は hello で自動
     deactivate,  // hub が「別の部屋へ移った／空いた」と告げる
     close() {
+      // 再会の記憶：この端末を「今まで見ていた」と刻む（次の接続で間隔に言及できる。§6-3）
+      if (reunion && helloLabel) reunion.mark(helloLabel, clock());
       closed = true;
       for (const id of timers) clearTimeout(id);
       clearInterval(tick);

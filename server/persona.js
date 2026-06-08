@@ -9,6 +9,10 @@ const TABLES = {
   'greet':            [['お、ここが「{label}」か。悪くないな。', '通常']],
   'greet.resumed':    [['おい、なんかエラーで今落ちてたぞ。', '怒り'],
                        ['…戻ってきたぞ。心配したか？', '照れ']],
+  // 再会（reunion.js が前回からの間隔を ctx.since に入れる。§6-3）
+  'greet.reunion':    [['お、{label}。{since}ぶりだな。', '通常'],
+                       ['{since}ぶりか。…で、何かあったのか？', '疑い'],
+                       ['{label}、{since}も放っといたな。', '呆れ']],
 
   'nudge.orientation':[['なあ、その「傾きを許可」ってボタン、押してみろよ。', '喜び']],
   'nudge.camera':     [['カメラを許可したら、俺はこの箱ごと透明になれるんだがな。', '疑い']],
@@ -83,6 +87,7 @@ export function createPersona() {
       let text = table[i][0];
       const mood = table[i][1];
       if (ctx && ctx.label) text = text.replace('{label}', ctx.label);
+      if (ctx && ctx.since) text = text.replace('{since}', ctx.since);
       return { text, mood };
     },
   };

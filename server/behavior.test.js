@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSession } from './behavior.js';
+import { createReunion } from './reunion.js';
 
 // 手で解決できる deferred な persona。line() を pending のまま握って切断を割り込ませる
 function deferredPersona() {
@@ -182,6 +183,51 @@ test('sources：activity と connectors は同列に poll される（両方喋�
   assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'desk.back'), 'activity も poll される');
   assert.ok(sent.some((m) => m.type === 'say' && m.data.text === 'home.back'), 'connector も poll される');
   s.close();
+});
+
+test('再会の記憶：間隔が空いて再接続すると greet.reunion を間隔つきで言う', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const reunion = createReunion();
+  let nowVal = new Date('2026-06-09T14:00:00').getTime();
+  const clock = () => nowVal;
+
+  // 1回目：接続してすぐ切断 → reunion に「居間」を最後に見た時刻として刻む
+  const s1 = createSession({ send: () => {}, persona: recordingPersona([]), now: clock, tickMs: 100000, reunion });
+  s1.receive({ type: 'hello', data: { protocol: 0, label: '居間' } });
+  s1.close();
+
+  // 5分後に同じ label で再接続
+  nowVal = new Date('2026-06-09T14:05:00').getTime();
+  const seen = [];
+  const s2 = createSession({ send: () => {}, persona: recordingPersona(seen), now: clock, tickMs: 100000, reunion });
+  s2.receive({ type: 'hello', data: { protocol: 0, label: '居間' } });
+  t.mock.timers.tick(800); await flush();
+
+  const g = seen.find((x) => x.s === 'greet.reunion');
+  assert.ok(g, 'greet.reunion が選ばれる');
+  assert.equal(g.ctx.since, '5分', '間隔が ctx.since に入る');
+  assert.equal(g.ctx.label, '居間', 'label も渡る');
+  s2.close();
+});
+
+test('再会：間隔が短すぎる（部屋移動レベル）なら素の greet', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const reunion = createReunion();
+  let nowVal = new Date('2026-06-09T14:00:00').getTime();
+  const clock = () => nowVal;
+  const s1 = createSession({ send: () => {}, persona: recordingPersona([]), now: clock, tickMs: 100000, reunion });
+  s1.receive({ type: 'hello', data: { protocol: 0, label: '居間' } });
+  s1.close();
+
+  nowVal += 30000; // 30秒後（< 1分のしきい値）
+  const seen = [];
+  const s2 = createSession({ send: () => {}, persona: recordingPersona(seen), now: clock, tickMs: 100000, reunion });
+  s2.receive({ type: 'hello', data: { protocol: 0, label: '居間' } });
+  t.mock.timers.tick(800); await flush();
+
+  assert.ok(seen.some((x) => x.s === 'greet'), '短い間隔は素の greet');
+  assert.ok(!seen.some((x) => x.s === 'greet.reunion'), 'reunion にはしない');
+  s2.close();
 });
 
 test('protocol 不一致の hello は error を返し、人格は動かさない', () => {

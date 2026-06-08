@@ -171,7 +171,7 @@ iOS の傾きセンサ等は**ユーザー操作起点の許可**が要るため
 
 - client 側が落ちた／回線が切れた → client が `resumed: true` で申告し、server が茶々を入れられる。
 - server 側が落ちた → 再起動後も `resumed: true` の hello が来るので「自分が落ちてた」ことに気づける。
-- server は `label` ごとに最後に見た時刻を覚えてよい（「リビングのiPad、3分ぶりだな」）。これは server の内部実装であり protocol の関知事項ではない。
+- server は `label` ごとに最後に見た時刻を覚えてよい（「リビングのiPad、3分ぶりだな」）。これは server の内部実装であり protocol の関知事項ではない。**実装済み**：`server/reunion.js` が label→最終時刻を覚え、間隔が空いた再接続で `greet.reunion` として間隔に言及する。
 
 ### 6-4. 認証
 

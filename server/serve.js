@@ -18,6 +18,7 @@ import { createLLMPersona } from './persona-llm.js';
 import { createWeather } from './weather.js';
 import { createActivity } from './activity.js';
 import { createHomeAssistant } from '../connectors/home-assistant.js';
+import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
 // どちらも line() の顔が同じなので behavior.js からは区別がつかない。
@@ -87,10 +88,11 @@ const server = https.createServer(
 // 仲介ハブが複数端末（部屋）を束ね、佇かを「一度に一箇所」に居させる（protocol §6-1）。
 // 接続ごとに脳（createSession）を作るが、佇かが居る部屋だけが喋る。TZ_BROADCAST=1 で全部屋に居る退化形。
 const broadcast = process.env.TZ_BROADCAST === '1';
+const reunion = createReunion(); // 接続をまたぐ「再会の記憶」。プロセスに一つ・全部屋で共有（§6-3）
 const hub = createHub({
   broadcast,
   makeSession: (opts) => createSession({
-    persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources(), ...opts,
+    persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources(), reunion, ...opts,
   }),
 });
 attachWS(server, '/ws', (sock) => {
