@@ -26,6 +26,9 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.webp': 'image/webp',
+  '.vrm': 'model/gltf-binary',
+  '.glb': 'model/gltf-binary',
+  '.wasm': 'application/wasm',
 };
 
 const server = https.createServer(
@@ -38,12 +41,23 @@ const server = https.createServer(
     let file = path.normalize(path.join(CLIENT, decodeURIComponent(url.pathname)));
     if (!file.startsWith(CLIENT)) { res.writeHead(403).end(); return; } // パストラバーサル拒否
     if (url.pathname.endsWith('/')) file = path.join(file, 'index.html');
+    const type = MIME[path.extname(file)] ?? 'application/octet-stream';
+
+    // HEAD（app.js の VRM 存在チェック等）：本体を読まず stat だけで応答
+    if (req.method === 'HEAD') {
+      fs.stat(file, (err, st) => {
+        if (err || !st.isFile()) { res.writeHead(404).end(); return; }
+        res.writeHead(200, { 'content-type': type, 'content-length': st.size });
+        res.end();
+      });
+      return;
+    }
     fs.readFile(file, (err, body) => {
       if (err) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('404');
         return;
       }
-      res.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' });
+      res.writeHead(200, { 'content-type': type });
       res.end(body);
     });
   },

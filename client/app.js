@@ -4,7 +4,12 @@
 // 本物の server（WS）に繋ぐ。オフライン開発は import 先を './mock-server.js' に替えるだけ
 // （mock も同じ connect({onMessage})→{send} の顔。client/README の「継ぎ目」参照）
 import { connect } from './ws-client.js';
-import * as face from './face.js';
+import * as cssFace from './face.js';
+
+// 顔は差し替え可能な継ぎ目（client/README）。既定は CSS の卵（どの端末でも動く床）。
+// WebGL が効く端末では VRM アバター（face-vrm.js）へ「格上げ」する＝プログレッシブ・
+// エンハンスメントが顔にも効く。activeFace は {emote,act,say,presence,setView} を持つ。
+let activeFace = cssFace;
 
 const $ = (s) => document.querySelector(s);
 const scene = $('#scene'), stage = $('#stage'), tatazuka = $('#tatazuka'),
@@ -60,7 +65,7 @@ function onOrientation(e) {
 (function loop() {
   cx += (tx - cx) * 0.12;
   cy += (ty - cy) * 0.12;
-  stage.style.transform = `rotateX(${cx.toFixed(2)}deg) rotateY(${cy.toFixed(2)}deg)`;
+  if (activeFace.setView) activeFace.setView(cx, cy); // 視点反映は顔側の責務（CSS=箱を回す / VRM=カメラ）
   requestAnimationFrame(loop);
 })();
 
@@ -194,12 +199,13 @@ hud.addEventListener('click', (e) => {
 });
 
 // ---- 配線（mock も本物の WS も同じ形：connect({onMessage}) → {send}）----
+let lastMood = '通常', lastHere = true; // 顔を差し替えたとき状態を引き継ぐため
 const handlers = {
   welcome() {},
-  say(d) { face.say(d.text); if (d.mood) face.emote(d.mood); },
-  emote(d) { face.emote(d.mood); },
-  motion(d) { face.act(d.act); },
-  presence(d) { face.presence(d.here); },
+  say(d) { activeFace.say(d.text); if (d.mood) { lastMood = d.mood; activeFace.emote(d.mood); } },
+  emote(d) { lastMood = d.mood; activeFace.emote(d.mood); },
+  motion(d) { activeFace.act(d.act); },
+  presence(d) { lastHere = d.here; activeFace.presence(d.here); },
   error(d) { lastIn = 'error: ' + d.message; renderHud(); },
 };
 const link = connect({
@@ -227,3 +233,27 @@ helloSent = true;
 sessionStorage.setItem('tz-connected', '1');
 renderPerm();
 renderHud();
+
+// ---- 顔の「格上げ」：WebGL が効き、モデルが在るときだけ VRM へ（プログレッシブ・エンハンスメント）----
+// 失敗（古い Safari でライブラリがパース不可・モデル 404・WebGL不可）は全部 CSS の卵のまま。
+// iOS 12（=試金石の iPad Air 2）は three.js をパースできず、ここで自然にフォールバックする。
+(async function tryVRM() {
+  if (caps.webgl !== 'on') return;
+  const modelUrl = new URLSearchParams(location.search).get('model') || './models/tatazuka.vrm';
+  try {
+    const head = await fetch(modelUrl, { method: 'HEAD' });
+    if (!head.ok) return; // モデルが無ければ CSS のまま（既定の床）
+    const mod = await import('./face-vrm.js');     // 動的 import：iOS12 はここで reject → catch
+    const vrm = await mod.createVRMFace({ scene, modelUrl });
+    cssFace.presence(false);                        // CSS の卵を退場
+    document.getElementById('tatazuka').hidden = true;
+    activeFace = vrm;
+    activeFace.presence(lastHere);                  // 現在の状態を引き継ぐ
+    activeFace.emote(lastMood);
+    lastIn = 'VRM: ' + modelUrl.split('/').pop();
+    renderHud();
+  } catch (e) {
+    lastIn = 'VRM不可(CSS継続): ' + (e && e.message ? e.message.slice(0, 40) : e);
+    renderHud(); // 卵のまま。設計通り佇かは出る
+  }
+})();

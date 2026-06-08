@@ -21,6 +21,8 @@ PORT=9000 node server/serve.js
 
 - WS は **同一オリジンの `/ws`**（protocol §1：オリジン一つ・wss 同一ホスト）。`serve.js` の HTTPS
   サーバーに `attachWS` で相乗りさせる。別ポートにはしない。
+- 静的配信は `.vrm`/`.glb`/`.wasm` の MIME も返す。`HEAD` は `fs.stat` だけで応答（VRM 存在チェックで
+  10MB を毎回読まないため）。client の `vendor/`（three.js 等）も `models/` の .vrm も同じ origin から配る。
 - `ws.js` は小さい JSON テキストフレーム専用に割り切った自前実装。`ws` ライブラリは入れない
   （`git clone && node server/serve.js` で即動く self-contained さを優先）。binary フレームは無視、
   断片化は連結対応、背圧は LAN・小メッセージ前提で見ない。

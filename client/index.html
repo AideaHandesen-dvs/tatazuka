@@ -47,6 +47,11 @@ window.addEventListener('unhandledrejection', function (e) {
 <!-- プロト用デバッグ表示 -->
 <div id="hud"></div>
 
+<!-- VRM 顔レイヤ用：vendor した three.js を "three" として解決（バンドラ不要・外部CDN非依存）。
+     importmap 非対応の古いブラウザは単に VRM を読まず CSS の卵にフォールバックする。 -->
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

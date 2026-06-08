@@ -27,6 +27,9 @@ python3 -m http.server 8000 -d client
 | `face.js` | **顔**。protocol の意味論（mood/act/presence/say）を DOM に翻訳する層 |
 | `ws-client.js` | **本物の server への接続**（WS）。再接続＋hello 打ち直し（§6-2）を担当。app.js の既定の接続先 |
 | `mock-server.js` | **偽の本体**。protocol v0 を厳守して喋る server スタブ。オフライン開発用（import を差し替えて使う） |
+| `face-vrm.js` | **VRM アバターの顔**（上位レイヤ）。face.js と同じ顔を実装。WebGL が効く端末でだけ動的ロード |
+| `vendor/` | three.js / three-vrm / GLTFLoader のビルド済み ESM（リポ同梱。外部CDN非依存・オフライン可） |
+| `models/` | VRM モデル置き場（**git 管理外**。各自で .vrm を置く） |
 | `style.css` | 見た目すべて。mood/act の語彙 → CSS の対応もここ |
 
 ## 将来の継ぎ目（ここを差し替える）
@@ -36,7 +39,42 @@ python3 -m http.server 8000 -d client
    オフライン開発したいときは app.js の import を `./mock-server.js` に戻すだけ。
    mock は protocol v0 に厳密に従うこと。**mock だけの方言を作ったら負け**（それは protocol 違反の温床）。
 2. **顔の差し替え（README §5）**：`face.js` ＋ `style.css` の mood/act 対応部分を丸ごと入れ替えれば
-   顔が変わる。`app.js` は顔の実装を知らない。
+   顔が変わる。`app.js` は顔の実装を知らない（`activeFace` の {emote,act,say,presence,setView} だけ見る）。
+   この継ぎ目が実際に機能することは、VRM 顔（face-vrm.js）を後付けで差し込んで実証済み。
+
+## VRM アバター（上位レイヤ＝プログレッシブ・エンハンスメント）
+
+「顔」は CSS の卵（face.js）を**床**として常に持ち、WebGL が効く端末ではそこに VRM アバター
+（face-vrm.js）を**格上げ**で載せる。設計メモ §5 の「軽量3D」をこの形で入れた。
+
+- **格上げ条件**（app.js の `tryVRM`）：`webgl` cap が `on` ＋ モデルが実在（HEAD で確認）＋ 動的
+  import が成功。どれかが欠ければ **CSS の卵のまま**。佇かは必ず出る。
+- **iOS 12（＝試金石の iPad Air 2）では VRM は出ない**。three.js は新しい構文を使うので Safari 12 では
+  パースできず、`import()` が reject → 自動で CSS にフォールバックする。これは想定動作。
+  VRM が見えるのはデスクトップや新しめのタブレット。
+- **ライブラリは vendor 済み**（`vendor/`）。`index.html` の importmap が `"three"` を
+  `./vendor/three.module.js` に解決する。**バンドラ不要**（ビルド済み ESM を server が配るだけ）、
+  外部 CDN に依存しない（オリジン一つ・LAN 完結）。three r160 / @pixiv/three-vrm 3.1.6。
+
+### モデルの置き方
+
+```sh
+# 手元の .vrm を置くだけ。既定のパスは client/models/tatazuka.vrm
+cp ~/somewhere/youravatar.vrm client/models/tatazuka.vrm
+# 別パスを使うなら ?model= で指定： https://host:8443/?model=./models/foo.vrm
+```
+
+- `models/` は **git 管理外**（ライセンス・サイズのため同梱しない）。
+- VRM0 / VRM1 どちらも可。three-vrm が向きを正規化し、face-vrm がカメラ側を向かせる。
+- カメラのフレーミング（`baseR` ＝ 顔までの距離）はモデルの背丈で多少ズレうる。face-vrm.js で調整。
+
+### face-vrm が実装する見た目
+
+- **視線追従**：`vrm.lookAt.target = camera`。覗き込むと**目がこっちを追って向く**＝箱の中の存在が
+  見返してくる。`setView`（傾き/マウス由来の角度）でカメラが佇かの周りを小さく回る。
+- **mood → VRM 標準表情**（happy/angry/relaxed/surprised…）。`emote` で重みを lerp。
+- **act → 簡易ボーン動作**（うなずく＝head pitch / 首を振る＝head yaw / 跳ねる＝scene Y / こっちを見る）。
+- **say → 画面上部の吹き出し**（CSS 顔の #balloon とは別の overlay）。
 
 ## 設計判断のメモ
 

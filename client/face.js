@@ -2,6 +2,7 @@
 // このファイルを丸ごと差し替えれば顔が変わる（README §5「顔は差し替え可能」の継ぎ目）。
 
 const tatazuka = document.getElementById('tatazuka');
+const stage = document.getElementById('stage');
 const puppet = tatazuka.querySelector('.puppet');
 const balloon = document.getElementById('balloon');
 
@@ -41,4 +42,10 @@ export function say(text) {
 export function presence(here) {
   // here:false ＝ 誰もいない部屋。カメラ背景（透明な箱）だけが残る（protocol §6-1）
   document.body.classList.toggle('away', !here);
+}
+
+// 視点（傾き／マウス由来の角度）を見た目に反映。app.js から毎フレーム呼ばれる。
+// CSS 顔では箱（#stage）ごと回す。VRM 顔（face-vrm.js）は同じ setView でカメラを動かす。
+export function setView(cx, cy) {
+  stage.style.transform = `rotateX(${cx.toFixed(2)}deg) rotateY(${cy.toFixed(2)}deg)`;
 }
