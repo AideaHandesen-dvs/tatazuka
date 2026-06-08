@@ -17,7 +17,13 @@
 ```sh
 node server/serve.js          # → https://<このマシン>:8443/ ＋ wss://<このマシン>:8443/ws
 PORT=9000 node server/serve.js
+
+cd server && npm test         # 人格層の契約テスト（node:test・依存ゼロ・LLM/ネット不要）
 ```
+
+テストは人格層の壊れやすい継ぎ目を固定する：LLM の**フォールバック契約**（不在/反応系/失敗/
+タイムアウト/壊れた出力 → ルール表）と、非同期 say の**「await 後の closed 再チェック」**
+（生成中に切断 → 発話を漏らさない）。`behavior.test.js` / `persona-llm.test.js`。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
