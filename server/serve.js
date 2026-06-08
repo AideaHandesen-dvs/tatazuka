@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachWS } from './ws.js';
 import { createSession } from './behavior.js';
+import { createHub } from './hub.js';
 import { createPersona } from './persona.js';
 import { createLLMPersona } from './persona-llm.js';
 import { createWeather } from './weather.js';
@@ -83,10 +84,19 @@ const server = https.createServer(
 );
 
 // ---- WebSocket（protocol v0）。同一オリジンの /ws に張る ----
+// 仲介ハブが複数端末（部屋）を束ね、佇かを「一度に一箇所」に居させる（protocol §6-1）。
+// 接続ごとに脳（createSession）を作るが、佇かが居る部屋だけが喋る。TZ_BROADCAST=1 で全部屋に居る退化形。
+const broadcast = process.env.TZ_BROADCAST === '1';
+const hub = createHub({
+  broadcast,
+  makeSession: (opts) => createSession({
+    persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources(), ...opts,
+  }),
+});
 attachWS(server, '/ws', (sock) => {
-  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources() });
-  sock.onMessage((msg) => session.receive(msg));
-  sock.onClose(() => session.close());
+  const room = hub.connect((obj) => sock.send(obj));
+  sock.onMessage((msg) => room.receive(msg));
+  sock.onClose(() => room.close());
 });
 
 server.listen(PORT, () => {
@@ -99,4 +109,5 @@ server.listen(PORT, () => {
   console.log(weatherOn ? `天気: on（${process.env.TZ_CITY || `${process.env.TZ_LAT},${process.env.TZ_LON}`}）` : '天気: off');
   console.log(activityOn ? '作業監視: 表示サーバあり（idle ツールが入っていれば離席/復帰を拾う）' : '作業監視: off（ヘッドレス）');
   console.log(hassOn ? `connectors: Home Assistant on（${process.env.TZ_HASS_PERSON}）` : 'connectors: off');
+  console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');
 });

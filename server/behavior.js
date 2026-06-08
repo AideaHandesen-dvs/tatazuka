@@ -30,7 +30,14 @@ function timeBand(hour) {
 // opts.weather はイベント源（任意・current() を持つ特別扱い＝朝の挨拶／遅い別サイクル）。
 // opts.activity / opts.sources は poll() だけ持つ入力源。activity（作業監視）も sources の一員として
 // 一様に毎 tick poll される（connectors の Home Assistant 等も sources で挿す）。無ければ触れない（PE）。
-export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity, sources }) {
+//
+// 活性（presence §6-1）：佇かが「この部屋に居る」間だけ喋る/動く/居る。
+//   - managed=false（既定・単体）：hello が通った瞬間に自分で活性化する＝従来どおり。
+//   - managed=true（hub 配下）：活性は hub が activate()/deactivate() で制御する（一度に一箇所）。
+//   present(here) は presence の出口（既定は send。hub は自分の出口を注入）。onReady は hello 成立の
+//   合図（hub が部屋として迎え入れる）。onActive(bool) は活性の変化を hub に知らせる（出力の関所用）。
+export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity, sources,
+                               present, managed, onReady, onActive }) {
   const p = persona || createPersona();
   const clock = now || Date.now;
   const interval = tickMs || TICK_MS;
@@ -38,6 +45,8 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
   const ctx = { label: '名前のない部屋' };
   // 入力源（poll() → {situation, ctx?}|null）を一様に扱う。activity も connectors も区別しない。
   const pollables = [activity, ...(sources || [])].filter(Boolean);
+  const showPresence = present || ((here) => send({ type: 'presence', data: { here } }));
+  const notifyActive = onActive || (() => {});
 
   const timers = new Set();
   let closed = false;
@@ -53,12 +62,15 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
   // extra は situation 固有の ctx（天気など）。基底 ctx（label 等）に重ねて persona に渡す。
   const say = async (situation, extra) => {
     const ln = await p.line(situation, extra ? { ...ctx, ...extra } : ctx);
-    if (closed || !ln) return;
+    if (closed || !active || !ln) return; // 生成待ちの間に切断/退室していたら送らない
     send({ type: 'say', data: ln.mood ? { text: ln.text, mood: ln.mood } : { text: ln.text } });
   };
-  const motion = (act) => send({ type: 'motion', data: { act } });
+  const motion = (act) => { if (!closed && active) send({ type: 'motion', data: { act } }); };
 
   let helloDone = false;
+  let active = false;        // この部屋に佇かが居るか（居る間だけ喋る/動く）
+  let resumed = false;       // 直近の hello が resumed 申告だったか（活性化時の挨拶に効く）
+  let helloCaps = {};        // 直近の hello の caps（活性化時の許可ねだりに使う）
   let connectStart = 0;
   let lastBand = null;
   let lastWeatherAt = 0; // 直近に天気を見た時刻（0＝まだ。最初の tick で一度見る）
@@ -83,7 +95,7 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
   }
 
   const tick = setInterval(() => {
-    if (closed || !helloDone) return;
+    if (closed || !helloDone || !active) return; // 居ない部屋では時計を回さない（喋らない）
     const now = clock();
 
     weatherTick(now); // ④ 天気（撃ちっぱなし。下の work/time/idle とは別サイクル）
@@ -114,31 +126,48 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     // それ以外：たまに暇つぶし／ふらっと散歩（presence：protocol §6-1）
     const r = Math.random();
     if (r < 0.15) {
-      send({ type: 'presence', data: { here: false } });
-      later(() => { send({ type: 'presence', data: { here: true } }); say('walk.back'); }, 8000);
+      showPresence(false); // 居る部屋から一瞬出る（hub 配下でも自分の部屋の中の話）
+      later(() => { if (closed || !active) return; showPresence(true); say('walk.back'); }, 8000);
     } else if (r < 0.55) {
       say('idle');
     }
   }, interval);
   timers.add(tick);
 
+  // ---- 活性化：佇かがこの部屋に「入った」。挨拶・許可ねだり・presence:true（§6-1/§6-3） ----
+  // greet=false は「つつかれて移ってきた」移動（挨拶せず、sense の反応で迎える）。
+  function activate(opts) {
+    if (active || !helloDone) return;
+    active = true;
+    notifyActive(true);
+    showPresence(true);
+    if (opts && opts.greet === false) return;
+    later(() => say(resumed ? 'greet.resumed' : 'greet'), 800); // 落ちたことは茶々に（§6-3）
+    if (lastBand === 'deepnight') later(() => say('time.deepnight'), 4000); // 深夜の接続には一言
+    if (helloCaps.orientation === 'ask') later(() => say('nudge.orientation'), 7000);
+    if (helloCaps.camera === 'ask') later(() => say('nudge.camera'), 14000);
+  }
+
+  // 退室：別の部屋へ佇かが移った／この部屋が空いた。presence:false にして黙る。
+  function deactivate() {
+    active = false;
+    notifyActive(false);
+    showPresence(false);
+  }
+
   // ---- protocol §3: hello / welcome ----
   function onHello(d) {
     if (!d || d.protocol !== 0) { send({ type: 'error', data: { message: 'protocol version mismatch' } }); return; }
     helloDone = true;
+    resumed = !!d.resumed;
+    helloCaps = d.caps || {};
     connectStart = clock();
     lastBand = timeBand(new Date(clock()).getHours()); // 接続時のバンドは「またいだ」扱いにしない
     if (d.label) ctx.label = d.label;
 
     send({ type: 'welcome', data: { protocol: 0 } });
-    send({ type: 'presence', data: { here: true } });
-
-    later(() => say(d.resumed ? 'greet.resumed' : 'greet'), 800); // 落ちたことは茶々に（§6-3）
-    if (lastBand === 'deepnight') later(() => say('time.deepnight'), 4000); // 深夜の接続には一言
-
-    const caps = d.caps || {};
-    if (caps.orientation === 'ask') later(() => say('nudge.orientation'), 7000);
-    if (caps.camera === 'ask') later(() => say('nudge.camera'), 14000);
+    if (onReady) onReady();    // hub に「部屋として迎えてよい」と知らせる（活性は hub が決める）
+    if (!managed) activate();  // 単体（hub 無し）は即この部屋に居つく＝従来の挙動
   }
 
   // ---- protocol §3-3: cap の変化 ----
@@ -186,6 +215,8 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
       else if (msg.type === 'sense') onSense(msg.data);
       // 未知の型は黙って無視
     },
+    activate,    // hub が「この部屋に入った」と告げる（managed 時）。単体時は hello で自動
+    deactivate,  // hub が「別の部屋へ移った／空いた」と告げる
     close() {
       closed = true;
       for (const id of timers) clearTimeout(id);

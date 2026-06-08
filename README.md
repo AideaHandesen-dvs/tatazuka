@@ -32,7 +32,9 @@
 LLM が無くても・遅くても佇かは手書きの台詞で喋る（[server/README.md](server/README.md) の「LLM persona」）。
 **天気にも反応する** — 都市を設定すると、雨の降り始めや暑さ寒さに茶々を入れる（Open-Meteo・キー不要）。
 **作業も見ている** — 同じ PC 上で動くので、長く席を外すと「どこ行った」、戻ると気づく（idle 検知・X11/Wayland）。
-**家の状態にも反応する** — Home Assistant と繋ぐと、帰宅すれば「おかえり」、外出すれば「いってらっしゃい」（connectors/ の入力役・在席判定・PE）。次の一手：connectors の「出力」側 —— 物理スタックチャンを表示先にする（[connectors/](connectors/README.md)）。
+**家の状態にも反応する** — Home Assistant と繋ぐと、帰宅すれば「おかえり」、外出すれば「いってらっしゃい」（connectors/ の入力役・在席判定・PE）。
+**一度に一箇所にしか居ない** — 複数端末を繋いでも佇かは一つの部屋にだけ居て、空いた端末を つつくと そっちへ移ってくる（仲介ハブ・[server/README.md](server/README.md) の「プレゼンス」）。物理スタックチャンも将来この同じハブに挿さる「もう一つの身体」になる。
+次の一手：connectors の「出力」側 —— 物理スタックチャンを表示先にする（[connectors/](connectors/README.md)・要実機）。
 
 ---
 
@@ -71,8 +73,9 @@ node server/serve.js
         │ protocol/ ＝ 両者の契約（WS メッセージ仕様）
         ▼
 本体（Linux デーモン / Node.js）                      server/
+  ├ 仲介ハブ（複数端末を束ね、佇かを「一度に一箇所」に居させる：presence ルーティング）
   ├ 人格層（behavior＝いつ / persona＝何を / ゴースト差し替え / LLM 格上げ）
-  ├ イベント源（触る・時刻帯・在席時間・天気・作業監視。将来: connectors）
+  ├ イベント源（触る・時刻帯・在席時間・天気・作業監視・Home Assistant）
   ├ WebSocket サーバー（RFC6455 自前実装・依存ゼロ）
   └ client/ を静的配信（オリジン一つ・HTTPS 終端一箇所）
         ▲
@@ -240,7 +243,8 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | M4 | 人格・イベント処理 | 🚧 behavior＝いつ喋るか / persona＝何を喋るか に分離。ルールベース＋**LLM persona**＋**ゴースト差し替え（characters/）**＋**天気・作業監視イベント** |
 | 天気 | 外部イベント源パターンの初例（Open-Meteo・キー不要・PE） | ✅ 2026-06-09 |
 | PC作業監視 | 離席/復帰の idle 検知（X11/Wayland・PE・在席時間に縮退）。アクティブウィンドウは未着手 | ✅ 2026-06-09 |
-| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**が稼働（behavior の `sources` 一般化込み）。出力（表示先）はこれから |
+| プレゼンス | 仲介ハブ＝一度に一箇所・つつくと移動（protocol §6-1 の移動ロジック実装。退化形は `TZ_BROADCAST`） | ✅ 2026-06-09 |
+| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**が稼働＋**ハブのルーティング**（出力の土台）。残るは物理スタックチャンの実機側（要実機） |
 
 ---
 

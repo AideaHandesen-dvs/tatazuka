@@ -7,7 +7,8 @@
 |---|---|
 | `serve.js` | エントリ。HTTPS 静的配信（client/）＋ WS を同一オリジンに張る |
 | `ws.js` | 依存ゼロの WebSocket（RFC6455）。`upgrade` に相乗り。マスク解除・フレーム生成・ping/pong・close |
-| `behavior.js` | 「**いつ・どんな状況で喋るか**」（トリガ・間・presence/motion の副作用）。protocol v0 の server 側 |
+| `hub.js` | **仲介ハブ**。複数の部屋（接続）を束ね、佇かを「一度に一箇所」に居させる（presence ルーティング・protocol §6-1） |
+| `behavior.js` | 一部屋ぶんの脳。「**いつ・どんな状況で喋るか**」＋活性（activate/deactivate）。protocol v0 の server 側 |
 | `persona.js` | 「**何を喋るか**」（situation タグ → 台詞）。**台詞生成の継ぎ目**。ルールベース（手書き表） |
 | `persona-llm.js` | persona の LLM 版。同じ `line()` の顔で、環境系の台詞だけ LLM 生成（反応系・失敗時は `persona.js` にフォールバック） |
 | `serve-ca.js` | 使い捨ての CA 配信。表示端末に root CA を信頼させる初回作業用（下記） |
@@ -27,6 +28,9 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
   タイムアウト/壊れた出力 → ルール表。mood は §4-3 語彙に丸め、散文混じりでも最初の `{...}` を拾う。
 - **非同期 say の安全性**（`behavior.test.js`）：「await 後の closed 再チェック」＝生成中に切断
   したら発話を漏らさない。
+- **プレゼンス＝一度に一箇所**（`hub.test.js`）：最初の部屋に居つく・先客が居れば後の部屋は空き・
+  空き部屋を つつくと移動（挨拶せず反応）・occupant 離脱で残った部屋へ移る・broadcast 退化形・
+  protocol 不一致は occupant にしない。本物の脳＋persona を通した統合テスト。
 - **provider のリクエスト整形**（`persona-llm.provider.test.js`）：fetch をスタブし、ollama は
   `format:json`、claude は temperature 等を**送らない**（Opus 4.8 で 400 の地雷）ことを固定。
 - **実 LLM スモーク**（`persona-llm.smoke.test.js`）：ローカル ollama に 1 回投げ、出力契約が
@@ -53,6 +57,25 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
   トランスポート非依存（`createSession({send})→{receive,close}`）。接続ごとのタイマーは `close()` で掃除する。
 - 再接続時の hello 打ち直し（protocol §6-2）は **client 側の `ws-client.js`** が担当。server は
   毎回新規接続として扱い、`resumed:true` の hello を見たら「落ちてたぞ」と茶々を入れる（§6-3）。
+
+### プレゼンス＝一度に一箇所（`hub.js`・protocol §6-1）
+
+複数端末が繋がっても、**佇かは一度に一箇所の部屋にしか居ない**。`hub.js` が部屋（接続）を束ね、
+居る部屋（occupant）だけに say/emote/motion を届け、空き部屋は presence:false（カメラ箱だけ）にする。
+
+- **出力の関所**：部屋ごとの送信に gatedSend を噛ませ、welcome/error は常に通し、say/emote/motion は
+  occupant だけ通す。presence は脳が `present()` で直接出す（空き部屋にも presence:false を届けるため）。
+- **移動**：空き部屋を つつく（sense）と、佇かはそこへ移る（先客は空き＝presence:false、移動側は
+  presence:true＋反応／挨拶はしない）。occupant が切れたら残った部屋へ移る。決定は全部 server（§6-1）。
+- **脳は活性で制御**：`behavior.js` は activate/deactivate を持ち、居ない部屋では時計を止めて黙る。
+  hub 配下では活性を hub が握る（`managed`）。単体（hub 無し）は hello で自動活性＝従来の挙動。
+- **退化形**：`TZ_BROADCAST=1` で全部屋に佇かが出る（protocol §6-1 line 153 の「フラグで残す」開発用）。
+- **protocol も client も不変**：client は presence に従って描くだけ。これは server 実装の成熟であって
+  契約変更ではない（M3 までの「全部屋に居る」退化形を、本物の移動ロジックに育てた）。
+
+> 注意（M4 の割り切り）：脳は今も**接続（部屋）ごと**なので、別の部屋へ移ると連続作業時間
+> （work.60/120/180 の時計）はリセットされる（再接続でリセットされるのと同じ。§6-2）。一つの脳を
+> 部屋をまたいで連続させる統合は将来。
 
 ## 人格エンジン（M4）
 
