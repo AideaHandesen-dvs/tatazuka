@@ -9,13 +9,16 @@
 | `ws.js` | 依存ゼロの WebSocket（RFC6455）。`upgrade` に相乗り。マスク解除・フレーム生成・ping/pong・close |
 | `behavior.js` | 「**いつ・どんな状況で喋るか**」（トリガ・間・presence/motion の副作用）。protocol v0 の server 側 |
 | `persona.js` | 「**何を喋るか**」（situation タグ → 台詞）。**LLM の継ぎ目はここ**。M4 はルールベース |
+| `serve-ca.js` | 使い捨ての CA 配信。表示端末に root CA を信頼させる初回作業用（下記） |
 
 ## 動かし方
 
 ```sh
-node server/serve.js          # → https://durandal:8443/ ＋ wss://durandal:8443/ws
+node server/serve.js          # → https://<このマシン>:8443/ ＋ wss://<このマシン>:8443/ws
 PORT=9000 node server/serve.js
 ```
+
+`<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
 ## protocol v0 の server 側実装（M3）
 
@@ -55,27 +58,39 @@ LLM が無くても佇かは喋る＝人格層でもプログレッシブ・エ�
 LAN 完結・枯れてる・外部サービス不要。Tailscale 案は「外から佇かに会いたい」が出てきたら再検討。
 
 - 証明書は `server/certs/cert.pem` / `key.pem`。**git 管理外**（.gitignore 済み）。
-- 再生成（IP やホスト名が変わったとき）：
+- 初回・再生成（IP やホスト名が変わったとき）。`<LAN-IP>` は表示端末から届くこのマシンの IP：
 
 ```sh
+mkcert -install
 mkcert -cert-file server/certs/cert.pem -key-file server/certs/key.pem \
-  durandal durandal.local 192.168.1.99 localhost 127.0.0.1
+  "$(hostname)" "$(hostname).local" localhost 127.0.0.1 <LAN-IP>
 ```
 
-### iPad（表示端末）の初回セットアップ — root CA を一度だけ信頼させる
+### 表示端末に root CA を信頼させる（端末ごとに一度だけ）
 
-mkcert のローカル CA を端末に入れる。**端末ごとに一回だけ**の作業。
+mkcert のローカル CA は、この PC だけが信頼している。表示端末（スマホ等）にも入れないと
+`wss://` が拒否される。まず CA を配信する：
 
-1. この PC で root CA を一時配信する：
-   ```sh
-   python3 -m http.server 9000 -d "$(mkcert -CAROOT)"
-   ```
-2. iPad の Safari で `http://192.168.1.99:9000/rootCA.pem` を開く →「プロファイルをダウンロード」を許可
-3. 設定 → 一般 → VPN とデバイス管理 → ダウンロード済みプロファイル → **インストール**
-4. **ここを忘れると無効**：設定 → 一般 → 情報 → 証明書信頼設定 → mkcert の root を**オン**
-5. 一時配信（手順1）を止める
+```sh
+node server/serve-ca.js     # → http://<LAN-IP>:9000/tatazuka-rootCA.crt （済んだら Ctrl+C）
+```
 
-以後、iPad の Safari で `https://192.168.1.99:8443/?label=リビングのiPad` を開けば緑の鍵で佇かが出る。
+> `python3 -m http.server` で `rootCA.pem` を配るのは**ダメ**：Content-Type が合わず iOS が
+> 「原因不明のエラー」で弾く上、CAROOT ごと配ると秘密鍵まで晒す。`serve-ca.js` は公開鍵だけを
+> 正しい Content-Type で配る。
+
+**iOS（iPad / iPhone）**
+1. Safari で `http://<LAN-IP>:9000/tatazuka-rootCA.crt` を開く → ダウンロードを許可
+2. 設定アプリの上部に出る **「プロファイルがダウンロード済み」**（または 設定 → 一般 → VPN とデバイス管理）→ **インストール**
+3. **ここを忘れると無効**：設定 → 一般 → 情報 → **証明書信頼設定** → mkcert の root を**オン**
+
+**Android（Chrome）**
+1. Chrome で `http://<LAN-IP>:9000/tatazuka-rootCA.crt` を開く → ダウンロード
+2. 設定 → セキュリティ → 暗号化と認証情報 → **証明書をインストール → CA 証明書**（警告は許可）→ 落としたファイルを選ぶ
+
+以後、端末のブラウザで `https://<LAN-IP>:8443/?label=好きな名前` を開けば佇かが出る
+（鍵マークに警告が出なければ成功。Safari は鍵が緑にはならない）。VRM が出るのは WebGL の効く端末
+（Android 等）。古い iOS は CSS の簡易顔にフォールバックする（[../client/README.md](../client/README.md)）。
 
 ## 設計メモ
 

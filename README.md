@@ -37,7 +37,7 @@
 
 ```sh
 # 1) 証明書（初回だけ）。getUserMedia / DeviceOrientation は HTTPS 必須なので要る。
-#    <LAN-IP> は表示端末から届くこのマシンの IP（例 192.168.1.99）。
+#    <LAN-IP> は表示端末から届くこのマシンの IP（例: 192.168.0.5 など）。
 mkcert -install
 mkcert -cert-file server/certs/cert.pem -key-file server/certs/key.pem \
   "$(hostname)" localhost 127.0.0.1 <LAN-IP>
