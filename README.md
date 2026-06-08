@@ -23,11 +23,13 @@
 | M1 | protocol v0 策定（[protocol/](protocol/README.md)） | ✅ |
 | M2 | 表示クライアント単体プロト（[client/](client/README.md)） | ✅ iPad 実機で確認 |
 | M3 | 依存ゼロ WebSocket サーバー（[server/](server/README.md)） | ✅ |
-| M4 | 人格・イベント処理 | 🚧 初版（時刻帯・在席時間） |
+| M4 | 人格・イベント処理 | 🚧 ルールベース＋**LLM persona 差し替え対応** |
 | 顔 | VRM アバター＋CSS フォールバック | ✅ Android 実機で確認 |
 | M5 | OpenCLAW / スタックチャン連携（connectors/） | ⬜ これから |
 
-次の一手：LLM による台詞生成（persona 差し替え）／ PC 作業監視 ／ 天気。
+**喋る言葉も差し替えられる** — 「何を喋るか」を LLM 生成に格上げできる（ollama / Claude API 両対応）。
+LLM が無くても・遅くても佇かは手書きの台詞で喋る（[server/README.md](server/README.md) の「LLM persona」）。
+次の一手：PC 作業監視 ／ 天気。
 
 ---
 
@@ -200,8 +202,8 @@ protocol の封筒を `{type, data}` に分離してあるのは、この「封�
 | M2 | 表示クライアント単体プロト（iPad 実機で「箱の中」確認） | ✅ 2026-06-08 |
 | M3 | 依存ゼロ WebSocket サーバー（protocol v0 を実装で裏付け） | ✅ 2026-06-08 |
 | 顔 | VRM アバター＋CSS フォールバック（Android 実機で確認） | ✅ 2026-06-08 |
-| M4 | 人格・イベント処理 | 🚧 初版（behavior＝いつ喋るか / persona＝何を喋るか に分離・ルールベース） |
-| — | LLM persona（ollama / API は要決定）・PC 作業監視・天気 | ⬜ |
+| M4 | 人格・イベント処理 | 🚧 behavior＝いつ喋るか / persona＝何を喋るか に分離。ルールベース＋**LLM persona 差し替え（ollama / Claude API 両対応）** |
+| — | PC 作業監視（X11/Wayland 依存で別マイルストーン）・天気 | ⬜ |
 | M5 | connectors/（OpenCLAW・スタックチャン連携） | ⬜ |
 
 ---
