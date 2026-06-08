@@ -64,6 +64,26 @@ test('環境系の situation は LLM 出力を採用する', async () => {
   assert.match(calls[0], /リビング/, 'ctx.label がプロンプトに織り込まれる');
 });
 
+test('再接続直後の greet.resumed も LLM 経路に乗る', async () => {
+  const calls = [];
+  const p = createLLMPersona({
+    provider: stubProvider('{"text":"…また落ちてたぞ","mood":"怒り"}', calls),
+    fallback: stubFallback(),
+  });
+  const r = await p.line('greet.resumed');
+  assert.deepEqual(r, { text: '…また落ちてたぞ', mood: '怒り' });
+  assert.equal(calls.length, 1, 'greet.resumed は LLM_SITUATIONS に含まれる');
+});
+
+test('ctx/label が無くてもプロンプトは壊れず「名無し」になる', async () => {
+  const calls = [];
+  const p = createLLMPersona({ provider: stubProvider('{"text":"よう"}', calls), fallback: stubFallback() });
+  await p.line('greet');                 // ctx 省略
+  assert.match(calls[0], /名無し/, 'label 不在は「名無し」に化ける');
+  await p.line('greet', { label: '' });  // 空文字 label も同じ扱い
+  assert.match(calls[1], /名無し/);
+});
+
 test('protocol 外の mood は「通常」に丸める', async () => {
   const p = createLLMPersona({
     provider: stubProvider('{"text":"やあ","mood":"ハッピー"}'),

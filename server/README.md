@@ -18,12 +18,20 @@
 node server/serve.js          # → https://<このマシン>:8443/ ＋ wss://<このマシン>:8443/ws
 PORT=9000 node server/serve.js
 
-cd server && npm test         # 人格層の契約テスト（node:test・依存ゼロ・LLM/ネット不要）
+cd server && npm test         # 人格層の契約テスト（node:test・依存ゼロ）
 ```
 
-テストは人格層の壊れやすい継ぎ目を固定する：LLM の**フォールバック契約**（不在/反応系/失敗/
-タイムアウト/壊れた出力 → ルール表）と、非同期 say の**「await 後の closed 再チェック」**
-（生成中に切断 → 発話を漏らさない）。`behavior.test.js` / `persona-llm.test.js`。
+テストは人格層の壊れやすい継ぎ目を固定する：
+
+- **フォールバック契約**（`persona-llm.test.js`）：LLM 不在/反応系 sense.*/未知/失敗/
+  タイムアウト/壊れた出力 → ルール表。mood は §4-3 語彙に丸め、散文混じりでも最初の `{...}` を拾う。
+- **非同期 say の安全性**（`behavior.test.js`）：「await 後の closed 再チェック」＝生成中に切断
+  したら発話を漏らさない。
+- **provider のリクエスト整形**（`persona-llm.provider.test.js`）：fetch をスタブし、ollama は
+  `format:json`、claude は temperature 等を**送らない**（Opus 4.8 で 400 の地雷）ことを固定。
+- **実 LLM スモーク**（`persona-llm.smoke.test.js`）：ローカル ollama に 1 回投げ、出力契約が
+  本当に通るか確認。**ollama 不在なら自動 skip**（CI/ネット不要を維持）。`TZ_SMOKE_MODEL` で
+  モデル上書き（既定 `qwen2.5:3b`）。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
