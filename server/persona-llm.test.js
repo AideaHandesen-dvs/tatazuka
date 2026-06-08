@@ -61,7 +61,24 @@ test('環境系の situation は LLM 出力を採用する', async () => {
   const r = await p.line('time.deepnight', { label: 'リビング' });
   assert.deepEqual(r, { text: 'よう、また夜更かしか', mood: '呆れ' });
   assert.equal(calls.length, 1, '環境系は LLM を一度呼ぶ');
-  assert.match(calls[0], /リビング/, 'ctx.label がプロンプトに織り込まれる');
+});
+
+test('部屋（端末）の名前は greet 系だけプロンプトに添える（機械的な名前連呼を防ぐ）', async () => {
+  const calls = [];
+  const p = createLLMPersona({ provider: stubProvider('{"text":"よう"}', calls), fallback: stubFallback() });
+  await p.line('greet', { label: 'リビング' });
+  assert.match(calls[0], /リビング/, 'greet では label を織り込む');
+  await p.line('idle', { label: 'リビング' });
+  assert.doesNotMatch(calls[1], /リビング/, 'idle 等では label を渡さない');
+  await p.line('greet'); // label 無しでも壊れない（名前の行ごと省く）
+  assert.doesNotMatch(calls[2], /名前/);
+});
+
+test('天気 situation は ctx.weather をプロンプトに織り込む', async () => {
+  const calls = [];
+  const p = createLLMPersona({ provider: stubProvider('{"text":"傘は"}', calls), fallback: stubFallback() });
+  await p.line('weather.rain.start', { label: '居間', weather: { desc: '雨', tempC: 18.4, city: '東京都' } });
+  assert.match(calls[0], /東京都は雨、気温18度/, '都市・空模様・気温が入る');
 });
 
 test('再接続直後の greet.resumed も LLM 経路に乗る', async () => {
@@ -73,15 +90,6 @@ test('再接続直後の greet.resumed も LLM 経路に乗る', async () => {
   const r = await p.line('greet.resumed');
   assert.deepEqual(r, { text: '…また落ちてたぞ', mood: '怒り' });
   assert.equal(calls.length, 1, 'greet.resumed は LLM_SITUATIONS に含まれる');
-});
-
-test('ctx/label が無くてもプロンプトは壊れず「名無し」になる', async () => {
-  const calls = [];
-  const p = createLLMPersona({ provider: stubProvider('{"text":"よう"}', calls), fallback: stubFallback() });
-  await p.line('greet');                 // ctx 省略
-  assert.match(calls[0], /名無し/, 'label 不在は「名無し」に化ける');
-  await p.line('greet', { label: '' });  // 空文字 label も同じ扱い
-  assert.match(calls[1], /名無し/);
 });
 
 test('protocol 外の mood は「通常」に丸める', async () => {
@@ -96,6 +104,39 @@ test('前後に散文・コードブロックが混じっても最初の {...} �
   const raw = 'はい、これが出力です：\n```json\n{"text":"ふぁ…","mood":"通常"}\n```\nどうぞ。';
   const p = createLLMPersona({ provider: stubProvider(raw), fallback: stubFallback() });
   assert.deepEqual(await p.line('idle'), { text: 'ふぁ…', mood: '通常' });
+});
+
+test('寛容抽出：mood の閉じ引用符落ち（"呆れ}）でも text/mood を救済する', async () => {
+  // 3B が頻発させる壊れ方。厳格 JSON.parse は失敗するが台詞は拾えるべき
+  const p = createLLMPersona({
+    provider: stubProvider('{"text": "お前、また寝落ちか？", "mood": "呆れ}'),
+    fallback: stubFallback(),
+  });
+  assert.deepEqual(await p.line('desk.away'), { text: 'お前、また寝落ちか？', mood: '呆れ' });
+});
+
+test('寛容抽出：JSON の後ろにゴミtrailingが続いても最初の正しい値を拾う', async () => {
+  const p = createLLMPersona({
+    provider: stubProvider('{"text":"よう","mood":"通常"}<|im_start|>ゴミ続き...'),
+    fallback: stubFallback(),
+  });
+  assert.deepEqual(await p.line('greet'), { text: 'よう', mood: '通常' });
+});
+
+test('後処理：text に紛れた mood 語の行を落とす（mood は保つ）', async () => {
+  const p = createLLMPersona({
+    provider: stubProvider('{"text":"早く帰りなさいよ。\\n照れ","mood":"照れ"}'),
+    fallback: stubFallback(),
+  });
+  assert.deepEqual(await p.line('idle'), { text: '早く帰りなさいよ。', mood: '照れ' });
+});
+
+test('後処理：改行を畳み、2文を超えたら頭2文に詰める', async () => {
+  const p = createLLMPersona({
+    provider: stubProvider('{"text":"一文目だ。\\n二文目だ。三文目は要らん。","mood":"通常"}'),
+    fallback: stubFallback(),
+  });
+  assert.deepEqual(await p.line('idle'), { text: '一文目だ。二文目だ。', mood: '通常' });
 });
 
 test('壊れた出力（JSON なし・空 text）はルール表へフォールバック', async () => {

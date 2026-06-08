@@ -111,15 +111,29 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 佇かにフォールバック＝ゴーストを全部消しても佇かは喋る。足し方・フォーマットは
 [characters/README.md](characters/README.md)。伺かの `ghost/<名前>/` を 1 ファイルに簡略化したもの。
 
-- **ollama**：`POST {OLLAMA_HOST}/api/chat`（`stream:false`, `format:"json"`）。既定モデルは環境依存
-  なので `TZ_LLM_MODEL` で指定（例 `qwen2.5:3b` 等の軽量モデル）。オフライン・無料・ローカル完結。
+- **ollama**：`POST {OLLAMA_HOST}/api/chat`（`stream:false`）。既定モデルは環境依存なので
+  `TZ_LLM_MODEL` で指定（例 `qwen2.5:3b` 等の軽量モデル）。オフライン・無料・ローカル完結。
+  小型モデルは JSON の後に特殊トークンを吐いて暴走しがちなので `options` で生成長（num_predict）・
+  温度・stop（`<|im_start|>`等）を絞る。`format:"json"` は qwen2.5:3b で逆に mood の引用符落ち
+  （`"mood":"呆れ}`）を誘発したため**使わず**、代わりに下の寛容抽出で受ける。
 - **claude**：`POST https://api.anthropic.com/v1/messages`（`anthropic-version: 2023-06-01`、
   `x-api-key`）。既定モデルは `claude-opus-4-8`。**短い台詞なら遅延・コスト的に
   `TZ_LLM_MODEL=claude-haiku-4-5` が実用的**。`temperature` 等は送らない（Opus 4.8 で 400）。
 
-出力契約は両 provider 共通：**厳格 JSON `{"text": "...", "mood": "..."}`** をプロンプトで要求し、
-`mood` は protocol §4-3 の語彙（通常/呆れ/疑い/喜び/怒り/照れ）。最初の `{...}` を取り出して
-パースし、壊れていればルール表にフォールバック。
+出力契約は両 provider 共通：**JSON `{"text": "...", "mood": "..."}`** をプロンプトで要求し、
+`mood` は protocol §4-3 の語彙（通常/呆れ/疑い/喜び/怒り/照れ）。パースは多段で受ける
+（小型モデルは JSON を崩しがちなので戦わず救済する方針）：
+
+1. 最初の**バランスした** `{...}` を厳格 `JSON.parse`（後続ゴミに強い深さ判定）
+2. 失敗したら**寛容抽出**：`text`/`mood` を個別の正規表現で拾う（`"mood":"呆れ}` の引用符落ち等を救済）
+3. **後処理**：text に紛れた mood 語の行を除去・改行を畳み・2文に詰める。`mood` 語彙外は通常に丸め
+4. それでも text が取れなければルール表にフォールバック
+
+部屋（端末）の名前は **greet 系だけ**プロンプトに添える（毎回渡すと機械的に名前を連呼して定型文
+っぽくなるため）。天気 situation では `ctx.weather`（空模様・気温・都市）を添える。
+
+> qwen2.5:3b で実測して詰めた（fallback 率 42%→0%、自名混入・語彙外mood・3文以上・改行を解消）。
+> 効いた手：寛容抽出・num_predict/stop/温度0.6・「むやみに名乗るな」の一行・部屋名の greet 限定。
 
 起動例：
 

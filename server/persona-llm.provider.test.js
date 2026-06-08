@@ -22,7 +22,7 @@ function stubFetch(responseJson) {
   return { calls, restore() { globalThis.fetch = orig; } };
 }
 
-test('ollama: /api/chat に stream:false・format:json で投げ、message.content を返す', async (t) => {
+test('ollama: /api/chat に stream:false・生成長/温度/stop を絞って投げ、message.content を返す', async (t) => {
   const f = stubFetch({ message: { content: '{"text":"よう","mood":"通常"}' } });
   t.after(f.restore);
 
@@ -33,8 +33,11 @@ test('ollama: /api/chat に stream:false・format:json で投げ、message.conte
   const { url, body } = f.calls[0];
   assert.equal(url, 'http://localhost:11434/api/chat');
   assert.equal(body.stream, false);
-  assert.equal(body.format, 'json', 'JSON 強制で壊れた散文を減らす');
   assert.equal(body.model, 'qwen2.5:3b');
+  // 小型モデルの暴走対策：生成長を絞り・温度を下げ・特殊トークンで止める
+  assert.equal(typeof body.options.num_predict, 'number');
+  assert.ok(body.options.temperature <= 0.7);
+  assert.ok(body.options.stop.includes('<|im_start|>'), '脱線トークンで停止');
   assert.deepEqual(body.messages.map((m) => m.role), ['system', 'user']);
   assert.equal(body.messages[0].content, 'SYS');
 });

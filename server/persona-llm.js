@@ -65,8 +65,10 @@ export const DEFAULT_CHARACTER = `あなたはデスクトップマスコット�
 // ── 出力プロトコル（＝tatazuka 側の固定。キャラを差し替えても変わらない）──────
 // ゴーストを丸ごと差し替えても、JSON 契約と mood 語彙（protocol §4-3）はここで担保する。
 const OUTPUT_RULE = `# 出力
-- 与えられた「状況」に対するこのキャラの一言だけを作る。
-- 必ず次の JSON だけを出力する。前後に説明・コードブロック・余計な文字を付けない：
+- 与えられた「状況」に対する、このキャラの短い一言だけを作る。1文。長くても2文。
+- 一人称で話す。自分の名前を台詞の中でむやみに名乗らない。
+- 気分は mood フィールドにだけ書く。text に「照れ」「怒り」などの気分の語そのものを混ぜない。
+- 必ず次の JSON だけを出力する。前後に説明・コードブロック・改行・余計な文字を付けない：
   {"text": "<台詞>", "mood": "<気分>"}
 - mood は次のどれか一つ：通常 / 呆れ / 疑い / 喜び / 怒り / 照れ`;
 
@@ -93,27 +95,74 @@ function buildSystem(character) {
   return `${character}\n\n${OUTPUT_RULE}`;
 }
 
-function buildUser(desc, ctx) {
-  const label = ctx && ctx.label ? ctx.label : '名無し';
-  let lines = `状況: ${desc}\n部屋（端末）の名前: ${label}`;
+function buildUser(situation, desc, ctx) {
+  let s = `状況: ${desc}`;
+  // 部屋（端末）の名前は挨拶のときだけ意味がある。常に渡すと毎回機械的に名前を口にして
+  // 定型文っぽくなるので、greet 系だけ添える（しかも label があるときだけ）。
+  if ((situation === 'greet' || situation === 'greet.resumed') && ctx && ctx.label) {
+    s += `\nこの部屋（端末）の名前: ${ctx.label}`;
+  }
   // 天気 situation のときは今の空模様・気温を添える（生成に織り込ませる）
   const w = ctx && ctx.weather;
   if (w) {
     const place = w.city ? `${w.city}は` : '';
-    lines += `\n今の天気: ${place}${w.desc}、気温${Math.round(w.tempC)}度`;
+    s += `\n今の天気: ${place}${w.desc}、気温${Math.round(w.tempC)}度`;
   }
-  return `${lines}\nこの状況でのこのキャラの一言を JSON で出せ。`;
+  return `${s}\nこの状況でのこのキャラの一言を JSON で出せ。`;
 }
 
-// LLM の生テキストから最初の {...} を取り出し、{text,mood} に検証して返す。壊れていれば null
+// 3B が text に紛れ込ませる癖を均す安全網：mood 語だけの行を落とし、改行を畳み、2文に詰める。
+// （プロンプトでも禁じているが、小型モデルは時々破る＝後処理で確実に直す）
+function sanitizeText(text) {
+  const lines = text.split('\n').map((s) => s.trim()).filter(Boolean);
+  // "…。\n照れ" のように mood 語が単独行で紛れたら除去（末尾の句読点は剥がして判定）
+  const kept = lines.filter((ln) => !MOODS.has(ln.replace(/[。、！？!?]+$/, '')));
+  let t = (kept.length ? kept : lines).join('').trim();
+  const parts = t.split(/(?<=[。！？!?])/).filter((s) => s.trim()); // 文末記号で分割（記号は残す）
+  if (parts.length > 2) t = parts.slice(0, 2).join('').trim();      // だらだら長文を頭2文に
+  return t;
+}
+
+// 生テキストから最初の“バランスした” {...} を取り出す（文字列内の括弧・後続ゴミに強い）。
+// 貪欲な /\{[\s\S]*\}/ だと末尾に紛れた `}` まで拾ってパース失敗するので、深さで閉じを見る。
+function firstJsonObject(raw) {
+  const start = raw.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return raw.slice(start, i + 1);
+  }
+  return null; // 閉じていない（途中で切れた）
+}
+
+// 厳格 JSON.parse がコケたとき用の寛容抽出。小型モデルは閉じ引用符落ち（"mood": "呆れ}）等を
+// よくやるので、text / mood を個別の正規表現で拾う。少なくとも text が取れれば台詞は成立する。
+function looseParse(raw) {
+  const tm = raw.match(/"text"\s*:\s*"((?:\\.|[^"\\])*)"/); // text は素直に閉じることが多い
+  if (!tm) return null;
+  const mm = raw.match(/"mood"\s*:\s*"?([^"\n}]*)/);        // mood は引用符・閉じ括弧の手前まで
+  return { text: tm[1], mood: mm ? mm[1].trim() : '' };
+}
+
+// LLM の生テキストから {text,mood} を取り出して検証して返す。壊れていれば null。
+// まず最初のバランスした {...} を厳格 parse、ダメなら寛容抽出で救済する。
 function parseLine(raw) {
   if (!raw) return null;
-  const m = raw.match(/\{[\s\S]*\}/);
-  if (!m) return null;
-  let obj;
-  try { obj = JSON.parse(m[0]); } catch (e) { return null; }
+  let obj = null;
+  const json = firstJsonObject(raw);
+  if (json) { try { obj = JSON.parse(json); } catch (e) { /* 寛容抽出へ */ } }
+  if (!obj || typeof obj.text !== 'string') obj = looseParse(raw);
   if (!obj || typeof obj.text !== 'string' || !obj.text.trim()) return null;
-  return { text: obj.text.trim(), mood: MOODS.has(obj.mood) ? obj.mood : '通常' };
+  const text = sanitizeText(obj.text);
+  if (!text) return null;
+  return { text, mood: MOODS.has(obj.mood) ? obj.mood : '通常' };
 }
 
 // ---- provider（両対応・依存ゼロ） ----
@@ -129,7 +178,8 @@ function ollamaProvider(env) {
         body: JSON.stringify({
           model,
           stream: false,
-          format: 'json',
+          // 生成長を絞り・脱線トークンで止め・温度を下げて JSON を安定させる（短い台詞には十分）。
+          options: { num_predict: 120, temperature: 0.6, stop: ['<|im_start|>', '<|endoftext|>'] },
           messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
         }),
         signal,
@@ -196,7 +246,7 @@ export function createLLMPersona(opts) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
       try {
-        const raw = await provider.generate(system, buildUser(desc, ctx), ctrl.signal);
+        const raw = await provider.generate(system, buildUser(situation, desc, ctx), ctrl.signal);
         const ln = parseLine(raw);
         if (ln) return ln;
       } catch (e) {
