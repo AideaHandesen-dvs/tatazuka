@@ -38,10 +38,13 @@ export function createSession({ send, persona, now, tickMs }) {
     return id;
   };
 
-  // 台詞は必ず persona 経由。situation を知らなければ persona が null を返し、何も喋らない
-  const say = (situation) => {
-    const ln = p.line(situation, ctx);
-    if (ln) send({ type: 'say', data: ln.mood ? { text: ln.text, mood: ln.mood } : { text: ln.text } });
+  // 台詞は必ず persona 経由。situation を知らなければ persona が null を返し、何も喋らない。
+  // line() は async（LLM persona は生成を待つ。ルール persona は同期値だが await で素通り）。
+  // ★ 生成中（数秒）にセッションが切れることがあるので、await の後に closed を再チェックしてから送る。
+  const say = async (situation) => {
+    const ln = await p.line(situation, ctx);
+    if (closed || !ln) return;
+    send({ type: 'say', data: ln.mood ? { text: ln.text, mood: ln.mood } : { text: ln.text } });
   };
   const motion = (act) => send({ type: 'motion', data: { act } });
 

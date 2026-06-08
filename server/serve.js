@@ -12,6 +12,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { attachWS } from './ws.js';
 import { createSession } from './behavior.js';
+import { createPersona } from './persona.js';
+import { createLLMPersona } from './persona-llm.js';
+
+// TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
+// どちらも line() の顔が同じなので behavior.js からは区別がつかない。
+const makePersona = process.env.TZ_LLM ? createLLMPersona : createPersona;
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -65,11 +71,12 @@ const server = https.createServer(
 
 // ---- WebSocket（protocol v0）。同一オリジンの /ws に張る ----
 attachWS(server, '/ws', (sock) => {
-  const session = createSession({ send: (obj) => sock.send(obj) });
+  const session = createSession({ send: (obj) => sock.send(obj), persona: makePersona() });
   sock.onMessage((msg) => session.receive(msg));
   sock.onClose(() => session.close());
 });
 
 server.listen(PORT, () => {
   console.log(`佇か → https://localhost:${PORT}/  （wss://localhost:${PORT}/ws）`);
+  console.log(process.env.TZ_LLM ? `人格: LLM persona（${process.env.TZ_LLM}）` : '人格: ルールベース');
 });

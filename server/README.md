@@ -8,7 +8,8 @@
 | `serve.js` | エントリ。HTTPS 静的配信（client/）＋ WS を同一オリジンに張る |
 | `ws.js` | 依存ゼロの WebSocket（RFC6455）。`upgrade` に相乗り。マスク解除・フレーム生成・ping/pong・close |
 | `behavior.js` | 「**いつ・どんな状況で喋るか**」（トリガ・間・presence/motion の副作用）。protocol v0 の server 側 |
-| `persona.js` | 「**何を喋るか**」（situation タグ → 台詞）。**LLM の継ぎ目はここ**。M4 はルールベース |
+| `persona.js` | 「**何を喋るか**」（situation タグ → 台詞）。**台詞生成の継ぎ目**。ルールベース（手書き表） |
+| `persona-llm.js` | persona の LLM 版。同じ `line()` の顔で、環境系の台詞だけ LLM 生成（反応系・失敗時は `persona.js` にフォールバック） |
 | `serve-ca.js` | 使い捨ての CA 配信。表示端末に root CA を信頼させる初回作業用（下記） |
 
 ## 動かし方
@@ -51,6 +52,59 @@ LLM が無くても佇かは喋る＝人格層でもプログレッシブ・エ�
   （ただし再接続で連続時間はリセットされる。§6-2 で server は接続をまたがないため。M4 の割り切り）。
 - `createSession({ send, persona?, now?, tickMs? })`：`now`/`tickMs` はテスト・デモで「間」を
   早送りするための注入（既定は実時間）。例：`tickMs: 5, now: ()=>fakeClock` で 3 時間ナグを即確認できる。
+
+### LLM persona（`persona-llm.js`）— 「何を喋るか」を生成に格上げ
+
+ルール表の固定台詞を、その場の生成に置き換える層。**`persona.js` の `line()` と同じ顔**
+（`line(situation, ctx) → {text,mood}|null`）で実装してあるので、behavior.js は一切触らない。
+卵 → VRM と同じ「格上げ」の発想を人格層でやる（§5 プログレッシブ・エンハンスメント）。
+
+設計判断（2026-06-08 にユーザーと確定）：
+
+- **`line()` を非同期化した。** 生成は喋る瞬間に走らせ、ctx（状況）をその場で織り込む。
+  behavior.js 側は `say` が `await p.line(...)` するだけ（`await` は同期値にも効くので、
+  ルール persona は無傷）。**生成中にセッションが切れることがあるので、await の後に
+  `closed` を再チェックしてから送る**——非同期化で唯一の落とし穴。protocol は不変、
+  変わったのは server 内の behavior↔persona の継ぎ目だけ。
+- **環境系の situation だけ LLM。** `idle` / `time.*` / `work.*` / `greet` / `walk.back` など
+  「一拍おいて喋ってよい」ものを生成する。**反応系（`sense.*` ＝つつく/なでる/揺らす）は
+  即レスが命なので手書き表のまま**（LLM の遅延が許されない場所を LLM にしない）。
+  振り分けは `persona-llm.js` 内の `LLM_SITUATIONS` で持つ。
+- **フォールバックは常にルール表。** LLM 不在・遅い・失敗・出力が壊れている → 内部に抱えた
+  `createPersona()` の `line()` を返す。**LLM が無くても佇かは喋る。**
+
+provider は両対応（env で切替）。**依存ゼロ維持**のため Node 18+ のグローバル `fetch` を使い、
+SDK は入れない（`ws` を自前実装したのと同じ方針）：
+
+| env | 既定 | 説明 |
+|---|---|---|
+| `TZ_LLM` | （未設定＝LLM オフ） | `ollama` か `claude`。未設定なら `serve.js` は従来のルール persona を使う |
+| `TZ_LLM_MODEL` | provider 既定 | モデル名 |
+| `OLLAMA_HOST` | `http://localhost:11434` | ollama 接続先 |
+| `ANTHROPIC_API_KEY` | — | `claude` 時のみ必須 |
+
+- **ollama**：`POST {OLLAMA_HOST}/api/chat`（`stream:false`, `format:"json"`）。既定モデルは環境依存
+  なので `TZ_LLM_MODEL` で指定（例 `qwen2.5:3b` 等の軽量モデル）。オフライン・無料・ローカル完結。
+- **claude**：`POST https://api.anthropic.com/v1/messages`（`anthropic-version: 2023-06-01`、
+  `x-api-key`）。既定モデルは `claude-opus-4-8`。**短い台詞なら遅延・コスト的に
+  `TZ_LLM_MODEL=claude-haiku-4-5` が実用的**。`temperature` 等は送らない（Opus 4.8 で 400）。
+
+出力契約は両 provider 共通：**厳格 JSON `{"text": "...", "mood": "..."}`** をプロンプトで要求し、
+`mood` は protocol §4-3 の語彙（通常/呆れ/疑い/喜び/怒り/照れ）。最初の `{...}` を取り出して
+パースし、壊れていればルール表にフォールバック。
+
+起動例：
+
+```sh
+# ローカル（ollama）。先に `ollama serve` と `ollama pull <model>` 済みであること
+TZ_LLM=ollama TZ_LLM_MODEL=qwen2.5:3b node server/serve.js
+
+# Claude API。台詞が短いので haiku で十分速い
+TZ_LLM=claude TZ_LLM_MODEL=claude-haiku-4-5 ANTHROPIC_API_KEY=sk-ant-... node server/serve.js
+
+# 何も指定しなければ従来どおりルールベースで動く（LLM 不要）
+node server/serve.js
+```
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
 
