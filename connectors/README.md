@@ -327,11 +327,11 @@ Mac/Win で特権側に落ちる**＝対応 OS でも黙る。
 | git | `git status`（`opts.run`） | ✓ | ✓ | ✓ | **既にクロス**（git はどこでも git） |
 | download | `readdir ~/Downloads` | ✓ | ✓ | ✓ | **ほぼクロス**（標準パス・readdir 不問） |
 | disk | `df -kP`（`opts.run`） | ✓ | **✓実証** | ✗ | **Mac は無改修で動く**（実機 10.15.7 で裏取り）／Win のみ別 CLI |
-| battery | `/sys/class/power_supply` | ✓ | **✓実装** | — | Mac=`pmset -g batt`（実装済・正規化）・Win=`Get-CimInstance Win32_Battery` |
-| memory | `/proc/meminfo` | ✓ | — | — | Mac=`vm_stat`＋`sysctl hw.memsize`・Win=PowerShell |
-| net | `/sys/class/net/*/operstate` | ✓ | — | — | Mac/Win=別口（普通ユーザーで可） |
-| nic | `/proc/net/dev` | ✓ | — | — | Mac=`netstat -ib`・Win=PowerShell |
-| trash | `~/.local/share/Trash` | ✓ | — | — | Mac=`~/.Trash`・Win=`$Recycle.Bin` |
+| battery | `/sys/class/power_supply` | ✓ | **✓実装** | — | Mac=`pmset -g batt`（正規化）・Win=`Get-CimInstance Win32_Battery` |
+| memory | `/proc/meminfo` | ✓ | **✓実装** | — | Mac=`vm_stat`＋`sysctl hw.memsize`（available は近似）・Win=PowerShell |
+| net | `/sys/class/net/*/operstate` | ✓ | **✓実装** | — | Mac=`ifconfig`（RUNNING/非 LOOPBACK）・Win=PowerShell |
+| nic | `/proc/net/dev` | ✓ | **✓実装** | — | Mac=`netstat -ibn`（`<Link#` 行の I/Obytes）・Win=PowerShell |
+| trash | `~/.local/share/Trash` | ✓ | **✓実装** | — | Mac=`~/.Trash`（場所だけ差・readdir 共通）・Win=`$Recycle.Bin` |
 | **thermal** | `/sys/class/thermal` | ✓ | ✕ | ✕ | **特権側＝縮退のまま**（決定①。Mac は `pmset -g therm` が "No thermal..." ＝出ないことを実機確認） |
 
 → Linux ロックは実質 **/sys + /proc + freedesktop-trash 群**（memory/net/nic/battery/trash）だけ。§7-3 が当初
@@ -353,7 +353,15 @@ spawn は重い（~100–300ms）ので毎 tick poll に響く→キャッシュ
 - **battery**（Mac）：OS 固有の読みが要る最初の例。`pmset -g batt` を Linux 語彙 `{capacity,status,acOnline}` に
   正規化し、充電ゲート・ヒステリシス・満充電遷移の判定は無改修で再利用＝**正規化境界が OS 差を吸収する**ことを実証。
   電池無しの fixture は実機 VM の pmset verbatim＝デスクトップ/VM は null 縮退（決定①）。
-- 残り（memory/net/nic/trash の Mac、及び Win 全般）は同じ型で順次。Win は当面 linux 既定に落ち /sys 不在で縮退。
+- **memory/net/nic/trash**（Mac・2026-06-09 landed）：同じ正規化境界で実装。memory=`vm_stat`＋`sysctl hw.memsize`
+  （available は free+inactive+speculative+purgeable の近似）・net=`ifconfig`（RUNNING を up・LOOPBACK 除外）・
+  nic=`netstat -ibn`（`<Link#` 行の Ibytes+Obytes・重複アドレス行を除外）・trash=場所だけ差（`~/.Trash`）。
+  実機 verbatim のユニットテスト＋ライブ end-to-end（`run` を ssh 差し替え）でパーサ一致を確認。
+- **CLI 実行の集約**：CLI を使う probe が 5 本（disk/battery/memory/nic/net）になったので `defaultRun` の重複を
+  **`run.js`**（純 IO の小部品・`hysteresis.js` と同列）に切り出した。これは判定/IO を OS 非依存の小部品に
+  寄せるだけで、上で警告した platform.js（OS 知識を集める god module）とは別物。
+- 残りは **Win 全般**。当面 linux 既定に落ち /proc・/sys 不在で縮退。将来 `readXxxWin`（PowerShell `Get-CimInstance`）を
+  同じ dispatch に足す（tiny10 VM が検証環境）。
 
 **到達の射程は OS と導入の別軸。** OS バックエンドは「観察の到達」（この OS で家が見えるか）を広げるが、
 **到達の本丸は導入**——今は `git clone`＋node＝開発者の作法で、エンドユーザー向け配布（インストーラ／自動起動の
