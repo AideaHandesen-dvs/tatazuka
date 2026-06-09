@@ -48,7 +48,7 @@ node --test connectors/*.test.js   # connector（入力プローブ）の契約�
 - **connector プローブ**（`connectors/*.test.js`）：IO（コマンド/ファイル/時計）を注入し、各プローブの
   契約を固定——HA（在席遷移）・git（未コミット/未 push・衝突繰り越し）・disk/memory（しきい値）・
   net（二値）・nic（差分レート）・battery（充電ゲート＋満充電）・thermal（温度・両方向デバウンス）・
-  download（差分エッジ）・trash（件数）・hysteresis（シュミット＋デバウンス）。実機を CI に持ち込まない。
+  download（差分エッジ）・trash（件数）・resume（時計の空白）・hysteresis（シュミット＋デバウンス）。実機を CI に持ち込まない。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
@@ -263,8 +263,9 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 
 - behavior.js は `poll()` を持つ入力源を **`sources: [...]`** で一様に受ける（activity もその一員）。
   serve.js の `makeSources()` が env を見て有効な connector を組み立て、無効なものは `null` を落とす（PE）。
-- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic`/`battery`/`thermal`/`download`/`trash` は
+- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic`/`battery`/`thermal`/`download`/`trash`/`resume` は
   OpenClaw 連携の **soft 委譲を「ランタイム無し」で実装した readonly プローブ**（[../connectors/README.md](../connectors/README.md) §7-1）。
+  後半（電池・温度・DL・ゴミ箱・スリープ）は**開発者ニッチでなくコンピュータを触る大多数に効く**観察を優先したもの。
   読むのは固定の readonly 一点だけ（LLM にコマンドを生成・実行させない＝soft を構造で守る）。
 
 | プローブ | 有効化する env | 何を見る | situation |
@@ -279,15 +280,17 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | **thermal** | `TZ_TEMP=1`（＋`TZ_TEMP_HOT_C` 既定 80） | 温度（`/sys/class/thermal`・最大ゾーン・below=false＋デバウンス） | `temp.hot` / `temp.ok` |
 | **download** | `TZ_DOWNLOAD=1`（＋`TZ_DOWNLOAD_DIR` 既定 ~/Downloads） | 新規ファイル出現（readdir 差分・エッジ型・件数のみ） | `download.done` |
 | **trash** | `TZ_TRASH=1`（＋`TZ_TRASH_MAX` 既定 100） | ゴミ箱の件数（~/.local/share/Trash/files・below=false） | `trash.full` / `trash.ok` |
+| **resume** | `TZ_RESUME=1`（＋`TZ_RESUME_GAP_S` 既定 180） | スリープ復帰（poll 間隔の空白・時計だけ） | `resume.back` |
 
 `friendly_name`（HA）は `ctx.who`、未コミット数・空き率・レート等は ctx で LLM persona に渡り、台詞に
 織り込まれる（「おかえり、◯◯」「foo に3件たまってるぞ」「残り8%だぞ」）。ルールベースは固定台詞。
 
 ```sh
-# 例：HA で在宅検知 ＋ 自分のリポの未コミット/未 push ＋ 空き容量 ＋ メモリ ＋ ネット
-TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=person.john \
-TZ_GIT_REPO=/home/me/proj TZ_DISK_PATH=/ TZ_MEM=1 TZ_NET=1 TZ_NIC=1 \
+# 例：空き容量＋メモリ＋ネット＋電池＋温度＋ダウンロード＋ゴミ箱＋スリープ復帰（机に座る人向けの素のセット）
+TZ_DISK_PATH=/ TZ_MEM=1 TZ_NET=1 TZ_NIC=1 \
+TZ_BATTERY=1 TZ_TEMP=1 TZ_DOWNLOAD=1 TZ_TRASH=1 TZ_RESUME=1 \
   node server/serve.js
+# 開発者向けに足すなら：TZ_HASS_URL=... TZ_HASS_TOKEN=... TZ_HASS_PERSON=person.john TZ_GIT_REPO=/home/me/proj
 # 起動ログの "connectors:" 行に、有効になったプローブが並ぶ
 ```
 

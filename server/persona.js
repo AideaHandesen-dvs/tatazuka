@@ -138,6 +138,11 @@ const TABLES = {
   'trash.ok':[['お、片付いたな。', '通常'],
               ['ゴミ箱、スッキリしたか。', '通常']],
 
+  // スリープ復帰（connectors/resume.js が poll 間隔の空白を検知＝マシンが寝ていた。
+  // ルール表は固定台詞＝ctx.gapMin は使わない。LLM は ctx.gapMin 込みで生成）
+  'resume.back':[['お、起きたか。おかえり。', '喜び'],
+                 ['ん、戻ってきたな。…寝てたのか？', '通常']],
+
   // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
   // LLM persona はここを ctx.weather 込みで生成に格上げする）
   'weather.morning':   [['ん、朝か。空、見たか？', '通常'],

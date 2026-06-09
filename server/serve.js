@@ -27,6 +27,7 @@ import { createBattery } from '../connectors/battery.js';
 import { createThermal } from '../connectors/thermal.js';
 import { createDownload } from '../connectors/download.js';
 import { createTrash } from '../connectors/trash.js';
+import { createResume } from '../connectors/resume.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -60,7 +61,12 @@ const tempOn = !!process.env.TZ_TEMP;
 const downloadOn = !!process.env.TZ_DOWNLOAD;
 // Trash プローブ（ゴミ箱の full↔ok）。掃除を促す家事ナッジ。README §7-1。TZ_TRASH=1 で有効。
 const trashOn = !!process.env.TZ_TRASH;
-const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(), createBattery(), createThermal(), createDownload(), createTrash()].filter(Boolean); // 将来 connector が増えたらここに足す
+// Resume プローブ（スリープ復帰＝「おかえり」）。poll 間隔の空白で検知・時計だけ。README §7-1。TZ_RESUME=1 で有効。
+const resumeOn = !!process.env.TZ_RESUME;
+const makeSources = () => [
+  createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(),
+  createBattery(), createThermal(), createDownload(), createTrash(), createResume(),
+].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -149,6 +155,7 @@ server.listen(PORT, () => {
     tempOn && 'thermal',
     downloadOn && 'download',
     trashOn && 'trash',
+    resumeOn && 'resume',
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');

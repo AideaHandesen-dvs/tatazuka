@@ -74,6 +74,8 @@ const LLM_SITUATIONS = {
   // ゴミ箱（connectors/trash.js が件数で full↔ok を検知。ctx.n に件数）
   'trash.full':     'ゴミ箱が溜まってきた。そろそろ空にするよう促す',
   'trash.ok':       'ゴミ箱が片付いてスッキリした。さりげなく認める',
+  // スリープ復帰（connectors/resume.js が poll の空白でマシンの離脱を検知。ctx.gapMin に空白の長さ[分]）
+  'resume.back':    'PC がスリープ（休止）から復帰した。「おかえり」と出迎える',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -207,6 +209,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // ゴミ箱（trash.*）：今の件数を添える（「150 件も溜まってるぞ」のように織り込ませる）
   if (ctx && ctx.n != null && (situation === 'trash.full' || situation === 'trash.ok')) {
     s += `\nゴミ箱の件数: ${ctx.n} 件`;
+  }
+  // スリープ復帰（resume.back）：空白の長さを添える（「2時間ぶりだな」のように織り込ませる）
+  if (ctx && ctx.gapMin != null && situation === 'resume.back') {
+    s += `\n離れていた時間: 約${ctx.gapMin} 分`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
