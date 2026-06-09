@@ -298,3 +298,20 @@ nic/thermal と同系——「机に座る人全員」向けの観察をしき�
 サブエージェント**を据える——第一候補は**自作 PawAgent に ReadOnly autonomy 段＋構造化出力を足したもの**
 （README §7-1）。ReadOnly 段が soft の境界で、autonomy を上げる＝hard 化＝§1 を意識的に上書きする
 **意図的スイッチ**。サードパーティ（ZeroClaw 等）より中身を把握した自前を優先する。要ると分かるまで作らない。
+
+### 7-3. 将来：OS 別バックエンド（Win/Mac）— 同じ IO 注入境界で差し替える【次セッションで議論・2026-06-09】
+
+現状サーバ（頭脳）は**実質 Linux 専用**。host 観察プローブは全部 Linux 固有口を読む（`/sys/class/power_supply`・
+`/sys/class/thermal`・`/proc/meminfo`・`/sys/class/net`・`/proc/net/dev`・freedesktop `~/.local/share/Trash`・
+X11/Wayland idle）。Win/Mac では**壊れず PE で `null` に縮退**（佇かは喋るが家の中は見えない）。
+
+**移行の足場は既に切ってある**：各プローブの IO は注入境界（`opts.readPower` / `opts.readTemps` / `opts.read` /
+`opts.run` / `opts.now`）で外に出してある。OS 対応は**この境界の内側を差し替える**だけで、`poll()` 契約も
+situation 語彙も protocol も不変——Win なら WMI/PowerShell、Mac なら `pmset`/IOKit を読む `defaultReadXxx` を
+`process.platform` で選ぶ形。判定ロジック（hysteresis・遷移検知・ゲート）は OS 非依存なので**そのまま再利用**できる。
+つまり「縮退して黙る」今の作りが、そのまま将来の OS 別バックエンドの土台になっている。
+
+注意点（議論で詰める）：依存ゼロ維持（SDK 入れず CLI/標準口で読めるか）・`process.platform` 分岐の置き場
+（各 `defaultReadXxx` 内か共通ヘルパか）・**到達面の本丸は OS だけでなく導入**（今は `git clone`＝開発者の作法。
+エンドユーザー向け配布は別問題）。**観察の射程**（大多数向け＝§7-1 の方針）と**到達の射程**（OS×導入）は
+別軸として扱う。詳細は次セッション。
