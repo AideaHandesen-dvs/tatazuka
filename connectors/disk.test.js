@@ -68,3 +68,28 @@ test('`df -kP <path>` を組む', async () => {
   await src.poll();
   assert.deepEqual(r.calls[0], { cmd: 'df', args: ['-kP', '/mnt'] });
 });
+
+// OS 別バックエンド検証（README §7-3・決定 2026-06-09）：disk は OS 固有の読みを持たず `df -kP`
+// 一本で回るので、Linux の defaultRun がそのまま macOS でも効く（POSIX -P が列構造を保証）。
+// 下は実機 macOS 10.15.7（osx-kvm）から採った df -kP の**実出力そのもの**。これを run に注入して、
+// 既存パーサが無改修で Mac 出力を正しく食えることを実データで固定する（縮退でなく実観察に到達）。
+const MAC_ROOT = // `df -kP /`（空き 70%・Available 26355868KB ≒ 25.1GB）
+  'Filesystem   1024-blocks     Used Available Capacity  Mounted on\n' +
+  '/dev/disk3s5    41607128 10817956  26355868    30%    /\n';
+const MAC_SPACE_MOUNT = // マウント先に空白を含む行（/Volumes/macOS Base System）。空き 33%・0.6GB
+  'Filesystem   1024-blocks     Used Available Capacity  Mounted on\n' +
+  '/dev/disk1s1      1965416  1301760    663656    67%    /Volumes/macOS Base System\n';
+
+test('macOS 実出力（df -kP）を無改修で食える＝OS 跨ぎで seam が保つ（§7-3）', async () => {
+  // LOW で prime → 実 Mac 出力（70%）で disk.ok。実文字列が freePct 70 / freeGb 25.1 に解ける。
+  const src = createDisk({ run: dfRun([LOW, MAC_ROOT]), env: ENV });
+  assert.equal(await src.poll(), null); // prime（low）
+  assert.deepEqual(await src.poll(), { situation: 'disk.ok', ctx: { freePct: 70, freeGb: 25.1, path: '/mnt' } });
+});
+
+test('マウント先に空白がある Mac 行でも壊れない（パーサは % 列までしか見ない・§7-3）', async () => {
+  // 空き 33% < min 40 で disk.low。Capacity 列の右（"macOS Base System"）は無視される。
+  const src = createDisk({ run: dfRun([OK, MAC_SPACE_MOUNT]), env: { TZ_DISK_PATH: '/mnt', TZ_DISK_MIN_PCT: '40' } });
+  assert.equal(await src.poll(), null); // prime（ok・空き 60%）
+  assert.deepEqual(await src.poll(), { situation: 'disk.low', ctx: { freePct: 33, freeGb: 0.6, path: '/mnt' } });
+});
