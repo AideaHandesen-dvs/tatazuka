@@ -3,3 +3,6 @@ node_modules/
 .env
 server/certs/
 client/models/
+
+# ローカル限定メモ（ラボ到達経路・IP 等。公開リポに乗せない）
+*.local.md
