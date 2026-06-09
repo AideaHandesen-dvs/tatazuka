@@ -131,6 +131,33 @@ test('後処理：text に紛れた mood 語の行を落とす（mood は保つ�
   assert.deepEqual(await p.line('idle'), { text: '早く帰りなさいよ。', mood: '照れ' });
 });
 
+test('後処理：同じ行に「／照れ」形式で漏れた末尾 mood タグを剥がす（mood は保つ）', async () => {
+  // 3B が改行せず本文と同じ行に mood をくっつける癖（実測：おぼろの "寒いねのう／照れ"）。
+  // 区切り（／）や括弧で付いた末尾 mood だけを落とし、mood フィールドは別途保つ。
+  const cases = [
+    ['寒いねのう／照れ', '寒いねのう'],
+    ['よし /喜び', 'よし'],
+    ['傘を持っていけ（怒り）', '傘を持っていけ'],
+    ['まだ起きてんのか〜呆れ', 'まだ起きてんのか'],
+  ];
+  for (const [raw, want] of cases) {
+    const p = createLLMPersona({
+      provider: stubProvider(`{"text":"${raw}","mood":"照れ"}`),
+      fallback: stubFallback(),
+    });
+    assert.deepEqual(await p.line('idle'), { text: want, mood: '照れ' }, `raw=${JSON.stringify(raw)}`);
+  }
+});
+
+test('後処理：本文が自然に mood 語で終わるとき（区切り無し）は剥がさない', async () => {
+  // "今日は怒り心頭だ" のように mood 語が本文の一部なら触らない（区切り／括弧が無いので対象外）
+  const p = createLLMPersona({
+    provider: stubProvider('{"text":"お前にはほとほと呆れ","mood":"呆れ"}'),
+    fallback: stubFallback(),
+  });
+  assert.deepEqual(await p.line('idle'), { text: 'お前にはほとほと呆れ', mood: '呆れ' });
+});
+
 test('後処理：改行を畳み、2文を超えたら頭2文に詰める', async () => {
   const p = createLLMPersona({
     provider: stubProvider('{"text":"一文目だ。\\n二文目だ。三文目は要らん。","mood":"通常"}'),

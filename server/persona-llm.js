@@ -17,6 +17,14 @@ const TIMEOUT_MS = 8000; // 生成がこれを超えたら諦めてルール表�
 // protocol §4-3 の mood 語彙。これ以外が返ってきたら「通常」に丸める
 const MOODS = new Set(['通常', '呆れ', '疑い', '喜び', '怒り', '照れ']);
 
+// 末尾に「区切り＋mood語」がくっつく 3B の癖を剥がすための正規表現（MOODS から導出）。
+// 例: "寒いねのう／照れ" "傘を持て（怒り）" "よし /喜び"。区切り（／ | ・ - ~ 空白）か
+// 開き括弧が直前にある場合だけを対象にし、本文が自然に mood 語で終わるケースは触らない。
+const MOOD_ALT = [...MOODS].join('|');
+const TRAILING_MOOD = new RegExp(
+  `(?:[／/｜|・･\\-—–~〜\\s]+[（(「『【\\[]?|[（(「『【\\[])\\s*(?:${MOOD_ALT})\\s*[)）」』】\\]\\s]*$`,
+);
+
 // LLM に任せる situation と、その状況の人間向け説明（プロンプトに渡す）。
 // ここに無い situation（sense.* / caps.* / nudge.* など）はルール表にそのまま委譲する。
 const LLM_SITUATIONS = {
@@ -133,6 +141,9 @@ function sanitizeText(text) {
   // "…。\n照れ" のように mood 語が単独行で紛れたら除去（末尾の句読点は剥がして判定）
   const kept = lines.filter((ln) => !MOODS.has(ln.replace(/[。、！？!?]+$/, '')));
   let t = (kept.length ? kept : lines).join('').trim();
+  // 行をまたがず "本文／照れ" のように同じ行に漏れた末尾 mood タグを剥がす（重ねて漏れても畳む）
+  let prev;
+  do { prev = t; t = t.replace(TRAILING_MOOD, '').trim(); } while (t && t !== prev);
   const parts = t.split(/(?<=[。！？!?])/).filter((s) => s.trim()); // 文末記号で分割（記号は残す）
   if (parts.length > 2) t = parts.slice(0, 2).join('').trim();      // だらだら長文を頭2文に
   return t;
