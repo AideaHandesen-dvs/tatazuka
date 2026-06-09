@@ -326,13 +326,13 @@ Mac/Win で特権側に落ちる**＝対応 OS でも黙る。
 | resume | 時計のみ（`opts.now`） | ✓ | ✓ | ✓ | **既に OS 無関係**（読むものが無い） |
 | git | `git status`（`opts.run`） | ✓ | ✓ | ✓ | **既にクロス**（git はどこでも git） |
 | download | `readdir ~/Downloads` | ✓ | ✓ | ✓ | **ほぼクロス**（標準パス・readdir 不問） |
-| disk | `df -kP`（`opts.run`） | ✓ | ✓ | ✗ | **Mac は即動く**／Win のみ別 CLI |
-| memory | `/proc/meminfo` | ✓ | — | — | Mac=`vm_stat`・Win=PowerShell |
+| disk | `df -kP`（`opts.run`） | ✓ | **✓実証** | ✗ | **Mac は無改修で動く**（実機 10.15.7 で裏取り）／Win のみ別 CLI |
+| battery | `/sys/class/power_supply` | ✓ | **✓実装** | — | Mac=`pmset -g batt`（実装済・正規化）・Win=`Get-CimInstance Win32_Battery` |
+| memory | `/proc/meminfo` | ✓ | — | — | Mac=`vm_stat`＋`sysctl hw.memsize`・Win=PowerShell |
 | net | `/sys/class/net/*/operstate` | ✓ | — | — | Mac/Win=別口（普通ユーザーで可） |
 | nic | `/proc/net/dev` | ✓ | — | — | Mac=`netstat -ib`・Win=PowerShell |
-| battery | `/sys/class/power_supply` | ✓ | — | — | Mac=`pmset -g batt`・Win=`Get-CimInstance Win32_Battery` |
 | trash | `~/.local/share/Trash` | ✓ | — | — | Mac=`~/.Trash`・Win=`$Recycle.Bin` |
-| **thermal** | `/sys/class/thermal` | ✓ | ✕ | ✕ | **特権側＝縮退のまま**（決定①） |
+| **thermal** | `/sys/class/thermal` | ✓ | ✕ | ✕ | **特権側＝縮退のまま**（決定①。Mac は `pmset -g therm` が "No thermal..." ＝出ないことを実機確認） |
 
 → Linux ロックは実質 **/sys + /proc + freedesktop-trash 群**（memory/net/nic/battery/trash）だけ。§7-3 が当初
 想定したより移植の山は小さい。
@@ -341,11 +341,19 @@ Mac/Win で特権側に落ちる**＝対応 OS でも黙る。
 CLI 越しに読める＝SDK 不要、既存の `opts.run` 境界にそのまま乗る。正直な穴 2 つを明記しておく：(a) PowerShell の
 spawn は重い（~100–300ms）ので毎 tick poll に響く→キャッシュ/間引きが要る、(b) thermal は決定①で縮退のまま。
 
-**有力案③：`process.platform` 分岐は各 `defaultReadXxx` 内の named 関数で dispatch。** `defaultReadTemps` の中で
-`readTempsLinux` / `readTempsMac` / `readTempsWin` に振り分ける（OS 固有の読みが situation 語彙の隣に居る＝凝集・
-新抽象ゼロ）。dispatch は `opts.platform ?? process.platform` を見る小さな選択だけ共有（テストで OS を強制できる）。
-**test seam（`opts.readXxx` / `opts.run`）は 3 案いずれでも不変。** 共有 helper 化（platform.js）や OS 別ファイル分割は、
-分岐ロジックが散って辛くなってからでよい。最終確定は第一実装のとき。
+**確定③：`process.platform` 分岐は各 `defaultReadXxx` 内の named 関数で dispatch。** `defaultReadPower` の中で
+`readPowerLinux` / `readPowerMac`（将来 `readPowerWin`）に振り分ける（OS 固有の読みが situation 語彙の隣に居る＝凝集・
+新抽象ゼロ）。dispatch は `opts.platform ?? process.platform` を見る小さな選択だけ。**test seam は読み口の全置換
+（`opts.readPower` 等）に加え、CLI 経路用に `opts.run` ＋ OS 強制の `opts.platform` を足す**（実 pmset/df を叩かず注入）。
+共有 helper 化（platform.js）や OS 別ファイル分割は、分岐ロジックが散って辛くなってからでよい（今は不要）。
+
+**第一実装の到達点（2026-06-09）：**
+- **disk**（Mac）：OS 固有の読みを持たず `df -kP` 一本なので Linux の defaultRun が無改修で効く。実機 macOS
+  10.15.7（osx-kvm）の df 実出力を注入する回帰テストで裏取り（マウント先の空白行も % 列までしか見ないので無害）。
+- **battery**（Mac）：OS 固有の読みが要る最初の例。`pmset -g batt` を Linux 語彙 `{capacity,status,acOnline}` に
+  正規化し、充電ゲート・ヒステリシス・満充電遷移の判定は無改修で再利用＝**正規化境界が OS 差を吸収する**ことを実証。
+  電池無しの fixture は実機 VM の pmset verbatim＝デスクトップ/VM は null 縮退（決定①）。
+- 残り（memory/net/nic/trash の Mac、及び Win 全般）は同じ型で順次。Win は当面 linux 既定に落ち /sys 不在で縮退。
 
 **到達の射程は OS と導入の別軸。** OS バックエンドは「観察の到達」（この OS で家が見えるか）を広げるが、
 **到達の本丸は導入**——今は `git clone`＋node＝開発者の作法で、エンドユーザー向け配布（インストーラ／自動起動の
