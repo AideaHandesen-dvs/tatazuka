@@ -21,6 +21,8 @@ import { createHomeAssistant } from '../connectors/home-assistant.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
+import { createNet } from '../connectors/net.js';
+import { createNic } from '../connectors/nic.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -43,7 +45,10 @@ const gitOn = !!process.env.TZ_GIT_REPO;
 const diskOn = !!process.env.TZ_DISK_PATH;
 // Memory プローブ（空きメモリの low↔ok）。デバウンス付きしきい値（README §7-1）。TZ_MEM=1 で有効。
 const memOn = !!process.env.TZ_MEM;
-const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory()].filter(Boolean); // 将来 connector が増えたらここに足す
+// Net（オンライン/オフライン・二値）と NIC（通信レート・レート型）。TZ_NET=1 / TZ_NIC=1 で有効。
+const netOn = !!process.env.TZ_NET;
+const nicOn = !!process.env.TZ_NIC;
+const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic()].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -126,6 +131,8 @@ server.listen(PORT, () => {
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',
+    netOn && 'net',
+    nicOn && 'nic',
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');
