@@ -299,7 +299,7 @@ nic/thermal と同系——「机に座る人全員」向けの観察をしき�
 （README §7-1）。ReadOnly 段が soft の境界で、autonomy を上げる＝hard 化＝§1 を意識的に上書きする
 **意図的スイッチ**。サードパーティ（ZeroClaw 等）より中身を把握した自前を優先する。要ると分かるまで作らない。
 
-### 7-3. 将来：OS 別バックエンド（Win/Mac）— 同じ IO 注入境界で差し替える【次セッションで議論・2026-06-09】
+### 7-3. OS 別バックエンド（Win/Mac）— 同じ IO 注入境界で差し替える【決定・2026-06-09】
 
 現状サーバ（頭脳）は**実質 Linux 専用**。host 観察プローブは全部 Linux 固有口を読む（`/sys/class/power_supply`・
 `/sys/class/thermal`・`/proc/meminfo`・`/sys/class/net`・`/proc/net/dev`・freedesktop `~/.local/share/Trash`・
@@ -307,11 +307,47 @@ X11/Wayland idle）。Win/Mac では**壊れず PE で `null` に縮退**（佇�
 
 **移行の足場は既に切ってある**：各プローブの IO は注入境界（`opts.readPower` / `opts.readTemps` / `opts.read` /
 `opts.run` / `opts.now`）で外に出してある。OS 対応は**この境界の内側を差し替える**だけで、`poll()` 契約も
-situation 語彙も protocol も不変——Win なら WMI/PowerShell、Mac なら `pmset`/IOKit を読む `defaultReadXxx` を
-`process.platform` で選ぶ形。判定ロジック（hysteresis・遷移検知・ゲート）は OS 非依存なので**そのまま再利用**できる。
-つまり「縮退して黙る」今の作りが、そのまま将来の OS 別バックエンドの土台になっている。
+situation 語彙も protocol も不変。判定ロジック（hysteresis・遷移検知・ゲート）は OS 非依存なので**そのまま再利用**できる。
+つまり「縮退して黙る」今の作りが、そのまま OS 別バックエンドの土台になっている。
 
-注意点（議論で詰める）：依存ゼロ維持（SDK 入れず CLI/標準口で読めるか）・`process.platform` 分岐の置き場
-（各 `defaultReadXxx` 内か共通ヘルパか）・**到達面の本丸は OS だけでなく導入**（今は `git clone`＝開発者の作法。
-エンドユーザー向け配布は別問題）。**観察の射程**（大多数向け＝§7-1 の方針）と**到達の射程**（OS×導入）は
-別軸として扱う。詳細は次セッション。
+**決定①：特権は一切上げない（線引きの芯）。** 普通のユーザーで読めるものだけ OS 別に対応し、特権（root/管理者/
+特別な entitlement）が要るものは**取りにいかず、今まで通り `null` 縮退で黙る**。佇かは「家の中が少し見えてる
+**同居人**」であって監視ソフトではない（§7-1 の PE と「soft を約束でなく構造で守る」の延長）——同居人は鍵の
+かかった部屋の鍵を要求しない。sudo/管理者昇格を求めた瞬間に soft の境界を OS を跨いで踏み越える。だから
+特権昇格は技術可否でなく「佇かが何者か」の問題として却下。これで各プローブは連続的な「どこまで権限を取るか」では
+なく**二値「普通のユーザーで読めるか/読めないか」**で振り分けるだけになる（縮退は新しく足すのでなく、既存の
+「読めない /sys は null で黙る」がもう 1 OS でも起きるだけ。コードの作りは歪まない）。具体的に **thermal だけが
+Mac/Win で特権側に落ちる**＝対応 OS でも黙る。
+
+**移植マトリクス（2026-06-09 の棚卸し）：** family の半分は既に移植済みか一歩手前。
+
+| プローブ | 読み口 | Linux | Mac | Win | 対応の所在 |
+|---|---|:--:|:--:|:--:|---|
+| resume | 時計のみ（`opts.now`） | ✓ | ✓ | ✓ | **既に OS 無関係**（読むものが無い） |
+| git | `git status`（`opts.run`） | ✓ | ✓ | ✓ | **既にクロス**（git はどこでも git） |
+| download | `readdir ~/Downloads` | ✓ | ✓ | ✓ | **ほぼクロス**（標準パス・readdir 不問） |
+| disk | `df -kP`（`opts.run`） | ✓ | ✓ | ✗ | **Mac は即動く**／Win のみ別 CLI |
+| memory | `/proc/meminfo` | ✓ | — | — | Mac=`vm_stat`・Win=PowerShell |
+| net | `/sys/class/net/*/operstate` | ✓ | — | — | Mac/Win=別口（普通ユーザーで可） |
+| nic | `/proc/net/dev` | ✓ | — | — | Mac=`netstat -ib`・Win=PowerShell |
+| battery | `/sys/class/power_supply` | ✓ | — | — | Mac=`pmset -g batt`・Win=`Get-CimInstance Win32_Battery` |
+| trash | `~/.local/share/Trash` | ✓ | — | — | Mac=`~/.Trash`・Win=`$Recycle.Bin` |
+| **thermal** | `/sys/class/thermal` | ✓ | ✕ | ✕ | **特権側＝縮退のまま**（決定①） |
+
+→ Linux ロックは実質 **/sys + /proc + freedesktop-trash 群**（memory/net/nic/battery/trash）だけ。§7-3 が当初
+想定したより移植の山は小さい。
+
+**決定②：依存ゼロは維持できる。** Win=PowerShell `Get-CimInstance`、Mac=`pmset`/`vm_stat`/`df`/`netstat` で全部
+CLI 越しに読める＝SDK 不要、既存の `opts.run` 境界にそのまま乗る。正直な穴 2 つを明記しておく：(a) PowerShell の
+spawn は重い（~100–300ms）ので毎 tick poll に響く→キャッシュ/間引きが要る、(b) thermal は決定①で縮退のまま。
+
+**有力案③：`process.platform` 分岐は各 `defaultReadXxx` 内の named 関数で dispatch。** `defaultReadTemps` の中で
+`readTempsLinux` / `readTempsMac` / `readTempsWin` に振り分ける（OS 固有の読みが situation 語彙の隣に居る＝凝集・
+新抽象ゼロ）。dispatch は `opts.platform ?? process.platform` を見る小さな選択だけ共有（テストで OS を強制できる）。
+**test seam（`opts.readXxx` / `opts.run`）は 3 案いずれでも不変。** 共有 helper 化（platform.js）や OS 別ファイル分割は、
+分岐ロジックが散って辛くなってからでよい。最終確定は第一実装のとき。
+
+**到達の射程は OS と導入の別軸。** OS バックエンドは「観察の到達」（この OS で家が見えるか）を広げるが、
+**到達の本丸は導入**——今は `git clone`＋node＝開発者の作法で、エンドユーザー向け配布（インストーラ／自動起動の
+Win Task Scheduler・Mac launchd）は OS バックエンドとは独立した別議題。§7-1 の「観察の射程（大多数向け）」と
+ここの「到達の射程（OS×導入）」を混同しない。OS は既存 seam の内側で安く済む／導入は別途。
