@@ -21,6 +21,7 @@ node server/serve.js          # → https://<このマシン>:8443/ ＋ wss://<�
 PORT=9000 node server/serve.js
 
 cd server && npm test         # 人格層の契約テスト（node:test・依存ゼロ）
+node --test connectors/*.test.js   # connector（入力プローブ）の契約テスト
 ```
 
 テストは人格層の壊れやすい継ぎ目を固定する：
@@ -44,6 +45,9 @@ cd server && npm test         # 人格層の契約テスト（node:test・依存
   （poll を ctx 込みで say・朝の `weather.morning` 縮退）は `behavior.test.js`。
 - **作業監視イベント源**（`activity.test.js`）：コマンド実行を注入し、idle しきい値跨ぎの離席/復帰・
   X11/Wayland 出力のパース・バックエンド選択・ツール不在時の縮退を固定。配線は `behavior.test.js`。
+- **connector プローブ**（`connectors/*.test.js`）：IO（コマンド/ファイル/時計）を注入し、各プローブの
+  契約を固定——HA（在席遷移）・git（未コミット/未 push・衝突繰り越し）・disk/memory（しきい値）・
+  net（二値）・nic（差分レート）・hysteresis（シュミット＋デバウンス）。実機を CI に持ち込まない。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
@@ -251,20 +255,35 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 > ロジック（しきい値跨ぎ・出力パース・縮退）は `activity.test.js` でコマンド実行を注入して固定。
 > 実バックエンドはヘッドレス CI では起こせないので、生確認は実機で。
 
-### connectors（イベント源・入力）— Home Assistant 等
+### connectors（イベント源・入力）— Home Assistant・readonly プローブ
 
-5 つ目以降の能動イベント源は **`connectors/`** に置く（ホスト自身のセンサではなく**外部システム**を
-読む第三者アダプタ。詳細は [../connectors/README.md](../connectors/README.md)）。配線は天気/作業監視と同型：
+5 つ目以降の能動イベント源は **`connectors/`** に置く（第三者アダプタ＋ホストの readonly プローブ。
+詳細は [../connectors/README.md](../connectors/README.md)）。配線は天気/作業監視と同型：
 
 - behavior.js は `poll()` を持つ入力源を **`sources: [...]`** で一様に受ける（activity もその一員）。
   serve.js の `makeSources()` が env を見て有効な connector を組み立て、無効なものは `null` を落とす（PE）。
-- 初例は **Home Assistant**（`connectors/home-assistant.js`）：HA の在席（`person.*`/`device_tracker.*`）を
-  読んで在宅 `home.back`／外出 `home.away` を喋る。`TZ_HASS_URL`/`TZ_HASS_TOKEN`/`TZ_HASS_PERSON` が
-  揃えば有効（PE）。`friendly_name` は `ctx.who` で LLM に渡る（「おかえり、◯◯」）。
+- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic` は
+  OpenClaw 連携の **soft 委譲を「ランタイム無し」で実装した readonly プローブ**（[../connectors/README.md](../connectors/README.md) §7-1）。
+  読むのは固定の readonly 一点だけ（LLM にコマンドを生成・実行させない＝soft を構造で守る）。
+
+| プローブ | 有効化する env | 何を見る | situation |
+|---|---|---|---|
+| **Home Assistant** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_PERSON` | HA の在席（`person.*`/`device_tracker.*`） | `home.back` / `home.away` |
+| **git** | `TZ_GIT_REPO`（監視リポのパス） | 未コミット・未 push（`git status --porcelain=v2 --branch`） | `git.dirty`/`git.clean`・`git.unpushed`/`git.pushed` |
+| **disk** | `TZ_DISK_PATH`（＋`TZ_DISK_MIN_PCT` 既定 10） | 空き容量（`df`・しきい値） | `disk.low` / `disk.ok` |
+| **memory** | `TZ_MEM=1`（＋`TZ_MEM_MIN_PCT` 既定 10） | 空きメモリ（`/proc/meminfo`・デバウンス付き） | `mem.low` / `mem.ok` |
+| **net** | `TZ_NET=1` | オンライン/オフライン（`/sys/class/net`・二値） | `net.online` / `net.offline` |
+| **nic** | `TZ_NIC=1`（＋`TZ_NIC_BUSY_MBPS` 既定 2） | 通信レート（`/proc/net/dev` 差分・MB/s） | `nic.busy` / `nic.idle` |
+
+`friendly_name`（HA）は `ctx.who`、未コミット数・空き率・レート等は ctx で LLM persona に渡り、台詞に
+織り込まれる（「おかえり、◯◯」「foo に3件たまってるぞ」「残り8%だぞ」）。ルールベースは固定台詞。
 
 ```sh
+# 例：HA で在宅検知 ＋ 自分のリポの未コミット/未 push ＋ 空き容量 ＋ メモリ ＋ ネット
 TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=person.john \
+TZ_GIT_REPO=/home/me/proj TZ_DISK_PATH=/ TZ_MEM=1 TZ_NET=1 TZ_NIC=1 \
   node server/serve.js
+# 起動ログの "connectors:" 行に、有効になったプローブが並ぶ
 ```
 
 ## HTTPS / 証明書（mkcert で決定：2026-06-08）
