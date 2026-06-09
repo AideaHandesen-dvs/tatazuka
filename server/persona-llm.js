@@ -69,6 +69,8 @@ const LLM_SITUATIONS = {
   // 温度（connectors/thermal.js が thermal_zone の最大で hot↔ok を検知。ctx.tempC に℃）
   'temp.hot':       'PC が熱くなってきた（ファンが唸るくらい）。少し休ませるよう気づかう',
   'temp.ok':        '熱かった温度が下がって落ち着いた。さりげなく安心する',
+  // ダウンロード（connectors/download.js が監視フォルダの新規ファイル出現を検知。ctx.n に新規件数）
+  'download.done':  'ダウンロードフォルダに新しいファイルが届いた。「何か来たな」と気づいて一言',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -194,6 +196,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 温度（temp.*）：今の温度を添える（「85℃ あるぞ」のように織り込ませる）
   if (ctx && (situation === 'temp.hot' || situation === 'temp.ok')) {
     s += `\nいちばん熱いところ: ${ctx.tempC}℃`;
+  }
+  // ダウンロード（download.done）：新規件数を添える（1件なら「1つ」、複数なら「3つも」のように）
+  if (ctx && ctx.n != null && situation === 'download.done') {
+    s += `\n新しく届いたファイル: ${ctx.n} 件`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

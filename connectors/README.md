@@ -176,6 +176,10 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 - [thermal.js](thermal.js) … **温度の hot↔ok**（`/sys/class/thermal/*`・§7-1）。机に座ってる人全員に効く体感（膝が熱い・
   ファンが唸る）。複数ゾーンの最大を見て `TZ_TEMP_HOT_C`（既定 80℃）を超え続けると `temp.hot`、冷えると `temp.ok`。
   nic と同じ below=false ＋スパイク弾きのデバウンス 3（両方向）。`TZ_TEMP=1` で有効化。
+- [download.js](download.js) … **ダウンロード完了**（既定 `~/Downloads` の readdir 差分・§7-1）。family 初の
+  **エッジ（出来事）型**——サンプル値でなく「新しいファイルが現れた瞬間」を一度だけ拾う（伺からしい反応）。
+  プライバシーで**件数だけ**見てファイル名は乗せず、途中ファイル（`.crdownload`/`.part` 等）は確定まで数えない。
+  `download.done`＋`ctx.n`。`TZ_DOWNLOAD=1` で有効化（`TZ_DOWNLOAD_DIR` で監視先変更）。
 - [hysteresis.js](hysteresis.js) … しきい値プローブ共有の**判定部品**（シュミットトリガ＝二閾値＋任意デバウンス）。
   純ロジック・IO なし。disk（即時）/ memory（デバウンス）/ nic（below=false）が載る。`makeThreshold({low,high,below,debounce}).feed(v)→'enter'|'exit'|null`。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
@@ -263,6 +267,11 @@ nic は below=false＋debounce=2。これで遷移型は **二値（git/HA/net�
 しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）／温度（thermal）** が揃った。battery は
 hysteresis をそのまま使いつつ、**流す値の側でゲートする**（放電中=実値・充電中=安全値）ことでブール条件を
 別レイヤを足さずに型へ畳み込んだ例。thermal は最大ゾーン＋両方向デバウンスの below=false 型。
+
+**しきい値ではない型・その1＝エッジ（出来事）型：[download.js](download.js)** — サンプル値を持たず、監視
+フォルダの **readdir 差分**で「新しいファイルが現れた瞬間」を一度だけ拾う。状態のまたぎでなく**離散イベント**。
+途中ファイル（`.crdownload`/`.part`）は確定まで数えず、プライバシーで**件数だけ**（名前は乗せない）。
+「机に座る人全員に効く readonly を優先」という転回の、開発者ニッチから最も遠い例（伺かの さくらが一番やる反応）。
 
 ### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
 

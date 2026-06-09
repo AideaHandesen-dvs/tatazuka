@@ -126,6 +126,11 @@ const TABLES = {
   'temp.ok':[['お、温度下がったな。', '通常'],
              ['落ち着いたか。', '通常']],
 
+  // ダウンロード完了（connectors/download.js が監視フォルダの新規出現を検知。エッジ型。
+  // ルール表は固定台詞＝ctx.n は使わない。LLM は ctx.n 込みで生成）
+  'download.done':[['お、何か落ちてきたな。', '通常'],
+                   ['ダウンロード終わったか。', '通常']],
+
   // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
   // LLM persona はここを ctx.weather 込みで生成に格上げする）
   'weather.morning':   [['ん、朝か。空、見たか？', '通常'],
