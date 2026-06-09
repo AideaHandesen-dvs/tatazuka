@@ -285,6 +285,17 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 `friendly_name`（HA）は `ctx.who`、未コミット数・空き率・レート等は ctx で LLM persona に渡り、台詞に
 織り込まれる（「おかえり、◯◯」「foo に3件たまってるぞ」「残り8%だぞ」）。ルールベースは固定台詞。
 
+**OS 対応（2026-06-09・connectors/README.md §7-3）：** 上の env も situation も OS で変わらない。host 観察プローブは
+内部で `process.platform` を見て読み口を切り替える（**特権は一切上げない**＝普通のユーザーで読めるものだけ・[../connectors/README.md](../connectors/README.md) §7-3 決定①）。
+
+| OS | 効くプローブ | 縮退（黙る）プローブ |
+|---|---|---|
+| **Linux** | 全部 | — |
+| **macOS**（実機 10.15.7 で検証） | git・disk（`df`）・memory（`vm_stat`+`sysctl`）・net（`ifconfig`）・nic（`netstat -ibn`）・battery（`pmset`）・download・trash（`~/.Trash`）・resume | **thermal**（`pmset -g therm` が温度を返さない＝特権/不在） |
+| **Windows** | git・download・resume（OS 非依存のもの） | host 観察系は当面 null 縮退（`readXxxWin` 未実装・次セッション） |
+
+縮退＝佇かは他の理由で喋るが「その家の中」は見えない（PE）。Mac は依存ゼロのまま（CLI を叩くだけ・SDK なし）。
+
 ```sh
 # 例：空き容量＋メモリ＋ネット＋電池＋温度＋ダウンロード＋ゴミ箱＋スリープ復帰（机に座る人向けの素のセット）
 TZ_DISK_PATH=/ TZ_MEM=1 TZ_NET=1 TZ_NIC=1 \

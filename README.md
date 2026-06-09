@@ -267,6 +267,7 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | プレゼンス | 仲介ハブ＝一度に一箇所・つつくと移動（protocol §6-1 の移動ロジック実装。退化形は `TZ_BROADCAST`） | ✅ 2026-06-09 |
 | 再会の記憶 | label ごとの最終時刻を覚え、再接続に「3分ぶりだな」（protocol §6-3） | ✅ 2026-06-09 |
 | M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**＋**git 未コミット**（soft 委譲の readonly プローブ初例）が稼働＋**ハブのルーティング**（出力の土台）。OpenClaw 連携は**向き3×soft・ランタイム無し**で決定（§7-1）。残るは物理スタックチャンの実機側（要実機） |
+| OS別バックエンド | host 観察プローブの Win/Mac 対応（同じ IO 注入境界の内側を差し替え） | 🚧 **Mac 全6本 landed**（2026-06-09・実機 osx-kvm で検証）。**特権ゼロ**＝読めるものだけ対応・thermal は縮退／`process.platform` で読み口を分岐し**正規化境界で OS 差を吸収**（判定は無改修再利用）。connectors/README.md §7-3。Win は次セッション |
 
 ---
 
