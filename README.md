@@ -268,7 +268,7 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | 再会の記憶 | label ごとの最終時刻を覚え、再接続に「3分ぶりだな」（protocol §6-3） | ✅ 2026-06-09 |
 | M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**＋**git 未コミット**（soft 委譲の readonly プローブ初例）が稼働＋**ハブのルーティング**（出力の土台）。OpenClaw 連携は**向き3×soft・ランタイム無し**で決定（§7-1）。残るは物理スタックチャンの実機側（要実機） |
 | OS別バックエンド | host 観察プローブの Win/Mac 対応（同じ IO 注入境界の内側を差し替え） | ✅ **Mac＋Win 全6本 landed**（2026-06-09・実機 osx-kvm／tiny10 で検証）。**特権ゼロ**＝読めるものだけ対応・thermal は両 OS で縮退／`process.platform` で読み口を分岐し**正規化境界で OS 差を吸収**（判定は無改修再利用）。Win は `Get-CimInstance`／PowerShell（disk/battery/memory/net/nic）＋`$Recycle.Bin` 再帰カウント（trash）。残るは導入（installer・自動起動）で OS バックエンドとは別議題。connectors/README.md §7-3 |
-| 導入（自動起動） | OS の仕組みで黙って起動・自動再起動（「観察の到達」でなく「導入の到達」＝開発者作法→エンドユーザー配布） | 🚧 **Linux=systemd user／macOS=launchd landed**（2026-06-09・各実機で HTTPS 200＋クラッシュ自動復活を実証）。Win Task Scheduler はこれから。秘密は env ファイルへ逃がす・env 無くても起動（PE）。[deploy/](deploy/README.md) |
+| 導入（自動起動） | OS の仕組みで黙って起動・自動再起動（「観察の到達」でなく「導入の到達」＝開発者作法→エンドユーザー配布） | 🚧 導入は二層。**①自動起動ユニット**＝Linux=systemd user／macOS=launchd **landed**（2026-06-09・各実機で HTTPS 200＋クラッシュ自動復活を実証）、Win Task Scheduler はこれから。**②エンドユーザー導入（installer：node＋repo＋証明書を一発で）はまだ**＝今は手順を手で踏む。秘密は env へ・env 無くても起動（PE）。[deploy/](deploy/README.md) |
 
 ---
 
