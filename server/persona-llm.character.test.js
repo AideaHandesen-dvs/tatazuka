@@ -58,6 +58,9 @@ test('既定：system はゴースト専用、OUTPUT_RULE は user 側（生成�
   assert.doesNotMatch(cap.seen.system, /"text": "<台詞>"/, '既定では OUTPUT_RULE を system に置かない');
   assert.match(cap.seen.user, /"text": "<台詞>", "mood": "<気分>"/, 'JSON 契約は user 側に付く');
   assert.match(cap.seen.user, /通常 \/ 呆れ \/ 疑い \/ 喜び \/ 怒り \/ 照れ/, 'mood 語彙も user 側に');
+  // 3B の照れ偏り是正：mood 選択ガイダンス（既定は通常・照れは照れ隠しだけ）が付く
+  assert.match(cap.seen.user, /既定は「通常」/, 'mood の既定が通常だと示す');
+  assert.match(cap.seen.user, /「照れ」は照れ隠しの時だけ/, '照れの濫用を抑えるガイダンス');
 });
 
 test('TZ_LLM_RULE_POS=system で旧挙動（契約を system 末尾）に戻せる', async () => {
