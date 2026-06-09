@@ -319,23 +319,23 @@ situation 語彙も protocol も不変。判定ロジック（hysteresis・遷�
 「読めない /sys は null で黙る」がもう 1 OS でも起きるだけ。コードの作りは歪まない）。具体的に **thermal だけが
 Mac/Win で特権側に落ちる**＝対応 OS でも黙る。
 
-**移植マトリクス（2026-06-09 の棚卸し）：** family の半分は既に移植済みか一歩手前。
+**移植マトリクス（2026-06-09・Mac＋Win 全 landed 後）：** thermal を除く 9 本が三 OS で観察に到達。
 
 | プローブ | 読み口 | Linux | Mac | Win | 対応の所在 |
 |---|---|:--:|:--:|:--:|---|
 | resume | 時計のみ（`opts.now`） | ✓ | ✓ | ✓ | **既に OS 無関係**（読むものが無い） |
 | git | `git status`（`opts.run`） | ✓ | ✓ | ✓ | **既にクロス**（git はどこでも git） |
 | download | `readdir ~/Downloads` | ✓ | ✓ | ✓ | **ほぼクロス**（標準パス・readdir 不問） |
-| disk | `df -kP`（`opts.run`） | ✓ | **✓実証** | ✗ | **Mac は無改修で動く**（実機 10.15.7 で裏取り）／Win のみ別 CLI |
-| battery | `/sys/class/power_supply` | ✓ | **✓実装** | — | Mac=`pmset -g batt`（正規化）・Win=`Get-CimInstance Win32_Battery` |
-| memory | `/proc/meminfo` | ✓ | **✓実装** | — | Mac=`vm_stat`＋`sysctl hw.memsize`（available は近似）・Win=PowerShell |
-| net | `/sys/class/net/*/operstate` | ✓ | **✓実装** | — | Mac=`ifconfig`（RUNNING/非 LOOPBACK）・Win=PowerShell |
-| nic | `/proc/net/dev` | ✓ | **✓実装** | — | Mac=`netstat -ibn`（`<Link#` 行の I/Obytes）・Win=PowerShell |
-| trash | `~/.local/share/Trash` | ✓ | **✓実装** | — | Mac=`~/.Trash`（場所だけ差・readdir 共通）・Win=`$Recycle.Bin` |
-| **thermal** | `/sys/class/thermal` | ✓ | ✕ | ✕ | **特権側＝縮退のまま**（決定①。Mac は `pmset -g therm` が "No thermal..." ＝出ないことを実機確認） |
+| disk | `df -kP`（`opts.run`） | ✓ | **✓実証** | **✓実証** | Mac は df 無改修（実機 10.15.7）／Win=`Win32_LogicalDisk`（実機 tiny10） |
+| battery | `/sys/class/power_supply` | ✓ | **✓実証** | **✓実証** | Mac=`pmset -g batt`・Win=`Win32_Battery`（BatteryStatus 正規化）。VM は電池無しで null 縮退 |
+| memory | `/proc/meminfo` | ✓ | **✓実証** | **✓実証** | Mac=`vm_stat`＋`sysctl hw.memsize`・Win=`Win32_OperatingSystem`（Free/TotalVisible kB） |
+| net | `/sys/class/net/*/operstate` | ✓ | **✓実証** | **✓実証** | Mac=`ifconfig`（RUNNING/非 LOOPBACK）・Win=`Win32_NetworkAdapter`（物理／NetConnectionStatus==2） |
+| nic | `/proc/net/dev` | ✓ | **✓実証** | **✓実証** | Mac=`netstat -ibn`・Win=`Win32_PerfRawData_Tcpip_NetworkInterface`（"Persec" 名でも生の累計） |
+| trash | `~/.local/share/Trash` | ✓ | **✓実証** | **✓実証** | Mac=`~/.Trash`（場所だけ差）・Win=`$Recycle.Bin` の `$R*` 再帰カウント（構造が違うので専用 read） |
+| **thermal** | `/sys/class/thermal` | ✓ | ✕ | ✕ | **特権側＝両 OS で縮退のまま**（決定①。Mac は `pmset -g therm` が "No thermal..."、Win も非特権では読めない） |
 
-→ Linux ロックは実質 **/sys + /proc + freedesktop-trash 群**（memory/net/nic/battery/trash）だけ。§7-3 が当初
-想定したより移植の山は小さい。
+→ Linux ロックだった **/sys + /proc + freedesktop-trash 群**（memory/net/nic/battery/trash）は Mac＋Win とも
+正規化境界の内側を差し替えて解消。残るのは特権側の thermal だけ（決定①でそもそも取りにいかない）。
 
 **決定②：依存ゼロは維持できる。** Win=PowerShell `Get-CimInstance`、Mac=`pmset`/`vm_stat`/`df`/`netstat` で全部
 CLI 越しに読める＝SDK 不要、既存の `opts.run` 境界にそのまま乗る。正直な穴 2 つを明記しておく：(a) PowerShell の
@@ -360,8 +360,21 @@ spawn は重い（~100–300ms）ので毎 tick poll に響く→キャッシュ
 - **CLI 実行の集約**：CLI を使う probe が 5 本（disk/battery/memory/nic/net）になったので `defaultRun` の重複を
   **`run.js`**（純 IO の小部品・`hysteresis.js` と同列）に切り出した。これは判定/IO を OS 非依存の小部品に
   寄せるだけで、上で警告した platform.js（OS 知識を集める god module）とは別物。
-- 残りは **Win 全般**。当面 linux 既定に落ち /proc・/sys 不在で縮退。将来 `readXxxWin`（PowerShell `Get-CimInstance`）を
-  同じ dispatch に足す（tiny10 VM が検証環境）。
+- **Win 全 6 本**（2026-06-09 landed）：同じ正規化境界で `readXxxWin` を各 dispatch に追加。disk=`Win32_LogicalDisk`
+  （df 不在なので別 CLI・FreeSpace/Size バイト）・battery=`Win32_Battery`（BatteryStatus 1/4/5=放電・3=満充電・
+  6〜9=充電に正規化）・memory=`Win32_OperatingSystem`（Free/TotalVisible kB）・net=`Win32_NetworkAdapter`（物理
+  だけ／NetConnectionStatus==2 を up）・nic=`Win32_PerfRawData_Tcpip_NetworkInterface`（**"Persec" 名でも生の累計
+  カウンタ**・名は parens→[]/slash→_ にサニタイズ）・trash=`$Recycle.Bin` の `$R*`（実体）を再帰カウント（$I は
+  メタなので数えない＝場所だけ差で済む linux/mac と違い専用 read）。全部 `opts.run` 越しの PowerShell＝SDK 不要・
+  特権ゼロ。出力は CRLF なので各 parser は `\r` を吸収。Win 固有の引数は execFile の argv 安全のため**シングル
+  クォートだけ**で書く（disk は `-Filter` でなく `Where-Object`）。
+- **Win の検証経路**（tiny10 は削り込み版で OpenSSH も node も無い）：Mac の「`run` を ssh 差し替え」が使えないので、
+  ホスト（vindalfr）に小さな HTTP サーバを立て、ゲストの PowerShell から `irm http://<gw>:8000/p.ps1 | iex` で
+  **production コマンドの実出力を POST** させて回収。それを各 probe の `opts.run` に注入するライブ e2e で 6 本とも
+  期待 situation（disk.ok 61%/23.8GB・電池無し→null・mem.low・net.online=Ethernet・nic.busy・trash.full）を確認＝
+  **fixture が実機 tiny10 verbatim であること＋ production コマンド文字列が実 Windows で通ることまで**を担保。
+  回帰テストは実出力 verbatim の const（電池/温度は VM で取れないので Mac と同じく null 縮退側のみ実機・残りは
+  安定フォーマットの構築文字列）。
 
 **到達の射程は OS と導入の別軸。** OS バックエンドは「観察の到達」（この OS で家が見えるか）を広げるが、
 **到達の本丸は導入**——今は `git clone`＋node＝開発者の作法で、エンドユーザー向け配布（インストーラ／自動起動の
