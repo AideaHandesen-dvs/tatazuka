@@ -173,6 +173,9 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   capacity / status を読み、**放電中に**残量が `TZ_BATTERY_MIN_PCT`（既定 20）を割ると `battery.low`、繋ぎ直せば
   `battery.ok`（充電中は「切れそう」と言わない＝充電ゲート）。第二の軸として `Full` で繋ぎっぱを `battery.full`
   （「もう満タン、抜いたら」＝電池いたわり・git の二軸と同型）。`TZ_BATTERY=1` で有効化。
+- [thermal.js](thermal.js) … **温度の hot↔ok**（`/sys/class/thermal/*`・§7-1）。机に座ってる人全員に効く体感（膝が熱い・
+  ファンが唸る）。複数ゾーンの最大を見て `TZ_TEMP_HOT_C`（既定 80℃）を超え続けると `temp.hot`、冷えると `temp.ok`。
+  nic と同じ below=false ＋スパイク弾きのデバウンス 3（両方向）。`TZ_TEMP=1` で有効化。
 - [hysteresis.js](hysteresis.js) … しきい値プローブ共有の**判定部品**（シュミットトリガ＝二閾値＋任意デバウンス）。
   純ロジック・IO なし。disk（即時）/ memory（デバウンス）/ nic（below=false）が載る。`makeThreshold({low,high,below,debounce}).feed(v)→'enter'|'exit'|null`。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
@@ -247,14 +250,19 @@ HA・git と同じ素の二値遷移。`net.online` で `ctx.iface`（経路）�
 **ノート利用者全員**に効く readonly はこれ——**開発者ニッチより、コンピュータを触る大多数に届く観察を優先**する転回点。
 `ctx.capacity`/`ctx.charging` を LLM が織り込む。
 
+**ゲート付きしきい値型（その2）：[thermal.js](thermal.js)** — `/sys/class/thermal/*` の複数ゾーンの**最大**を
+「いちばん熱いところ」として見る。nic と同じ below=false（大きいほど警戒）に、一瞬の負荷でツンと跳ねる温度の
+スパイク弾き（デバウンス 3・両方向）を足す。`TZ_TEMP_HOT_C`（既定 80℃）超えで `temp.hot`、冷えて `temp.ok`。
+膝の上が熱い・ファンが唸るは万人の体感。`ctx.tempC` を LLM が織り込む。
+
 **ばたつき対策＝共有部品 [hysteresis.js](hysteresis.js)**：threshold プローブの「ばたつき（flapping）」は
 二要因あり、別レイヤで潰す——①**縁のチャタ**（値が閾値付近でゆらぐ）→ **シュミットトリガ**（low/high の
 二閾値・帯の中は維持）②**スパイク**（一瞬だけ跨ぐ）→ **デバウンス**（N 連続で確定）。`makeThreshold` が
 両方を持ち、disk は debounce=1（容量はゆっくり）、memory は debounce=3（30 秒 tick で約 90 秒の継続）、
 nic は below=false＋debounce=2。これで遷移型は **二値（git/HA/net）／即時しきい値（disk）／デバウンス
-しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）** が揃った。battery は hysteresis を
-そのまま使いつつ、**流す値の側でゲートする**（放電中=実値・充電中=安全値）ことでブール条件を別レイヤを
-足さずに型へ畳み込んだ例。
+しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）／温度（thermal）** が揃った。battery は
+hysteresis をそのまま使いつつ、**流す値の側でゲートする**（放電中=実値・充電中=安全値）ことでブール条件を
+別レイヤを足さずに型へ畳み込んだ例。thermal は最大ゾーン＋両方向デバウンスの below=false 型。
 
 ### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
 

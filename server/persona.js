@@ -119,6 +119,13 @@ const TABLES = {
   'battery.full':[['もう満タンだぞ。そろそろ抜いてやれ、電池が傷む。', '通常'],
                   ['満充電だ。繋ぎっぱは電池に悪いからな。', '通常']],
 
+  // 温度（connectors/thermal.js が thermal_zone の最大を見て hot↔ok を検知。below=false のしきい値。
+  // ルール表は固定台詞＝ctx.tempC は使わない。LLM は ctx.tempC 込みで生成）
+  'temp.hot':[['おい、熱くなってるぞ。少し休ませてやれ。', '怒り'],
+              ['…熱っ。ファン、唸ってないか？', '疑い']],
+  'temp.ok':[['お、温度下がったな。', '通常'],
+             ['落ち着いたか。', '通常']],
+
   // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
   // LLM persona はここを ctx.weather 込みで生成に格上げする）
   'weather.morning':   [['ん、朝か。空、見たか？', '通常'],

@@ -24,6 +24,7 @@ import { createMemory } from '../connectors/memory.js';
 import { createNet } from '../connectors/net.js';
 import { createNic } from '../connectors/nic.js';
 import { createBattery } from '../connectors/battery.js';
+import { createThermal } from '../connectors/thermal.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -51,7 +52,9 @@ const netOn = !!process.env.TZ_NET;
 const nicOn = !!process.env.TZ_NIC;
 // Battery プローブ（残量の low↔ok＋満充電ケア・ゲート付きしきい値）。ノート利用者全員に効く readonly（README §7-1）。TZ_BATTERY=1 で有効。
 const batteryOn = !!process.env.TZ_BATTERY;
-const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(), createBattery()].filter(Boolean); // 将来 connector が増えたらここに足す
+// Thermal プローブ（温度の hot↔ok）。机に座る人全員に効く体感（README §7-1）。TZ_TEMP=1 で有効。
+const tempOn = !!process.env.TZ_TEMP;
+const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(), createBattery(), createThermal()].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -137,6 +140,7 @@ server.listen(PORT, () => {
     netOn && 'net',
     nicOn && 'nic',
     batteryOn && 'battery',
+    tempOn && 'thermal',
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');

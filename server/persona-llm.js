@@ -66,6 +66,9 @@ const LLM_SITUATIONS = {
   'battery.low':    'バッテリー残量が少なくなってきた（放電中）。充電するよう促す',
   'battery.ok':     '電源につないで充電が始まった（残量の心配が消えた）。さりげなく安心する',
   'battery.full':   '満充電なのに電源を繋ぎっぱなしにしている。電池をいたわって、そろそろ抜くよう促す',
+  // 温度（connectors/thermal.js が thermal_zone の最大で hot↔ok を検知。ctx.tempC に℃）
+  'temp.hot':       'PC が熱くなってきた（ファンが唸るくらい）。少し休ませるよう気づかう',
+  'temp.ok':        '熱かった温度が下がって落ち着いた。さりげなく安心する',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -187,6 +190,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // バッテリー（battery.*）：残量と充電状態を添える（「残り15%、まだ放電中だぞ」のように織り込ませる）
   if (ctx && (situation === 'battery.low' || situation === 'battery.ok' || situation === 'battery.full')) {
     s += `\nバッテリー残量: ${ctx.capacity}%（${ctx.charging ? '充電中' : '放電中'}）`;
+  }
+  // 温度（temp.*）：今の温度を添える（「85℃ あるぞ」のように織り込ませる）
+  if (ctx && (situation === 'temp.hot' || situation === 'temp.ok')) {
+    s += `\nいちばん熱いところ: ${ctx.tempC}℃`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
