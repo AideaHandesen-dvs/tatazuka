@@ -19,6 +19,7 @@ import { createWeather } from './weather.js';
 import { createActivity } from './activity.js';
 import { createHomeAssistant } from '../connectors/home-assistant.js';
 import { createGit } from '../connectors/git.js';
+import { createDisk } from '../connectors/disk.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -36,7 +37,10 @@ const hassOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && proces
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
-const makeSources = () => [createHomeAssistant(), createGit()].filter(Boolean); // 将来 connector が増えたらここに足す
+// Disk プローブ（空き容量の low↔ok）。soft 委譲の readonly プローブ（しきい値型・README §7-1）。
+// TZ_DISK_PATH があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
+const diskOn = !!process.env.TZ_DISK_PATH;
+const makeSources = () => [createHomeAssistant(), createGit(), createDisk()].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -117,6 +121,7 @@ server.listen(PORT, () => {
   const conn = [
     hassOn && `Home Assistant（${process.env.TZ_HASS_PERSON}）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
+    diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');

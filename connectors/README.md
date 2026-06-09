@@ -159,6 +159,8 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 - [home-assistant.js](home-assistant.js) … **入力役の初例**（在宅/外出）。behavior.js の `sources` 配線込み。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミットの clean↔dirty・§7-1）。
   `git status --porcelain` を readonly で読み、`git.dirty`/`git.clean` を投げる。`TZ_GIT_REPO` で有効化。
+- [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
+  空き率が `TZ_DISK_MIN_PCT`（既定 10）を割ると `disk.low`、回復で `disk.ok`。`TZ_DISK_PATH` で有効化。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
   コピーして `read()`/`translate()` を実装すれば新しい入力 connector になる。
 - 各 `*.test.js` … `poll()` の契約（遷移検知・縮退・状態独立・認証）を固定。
@@ -171,9 +173,10 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 **まだ無い（M5 の残り）**：
 
 - **入力**：HA 以外のイベント源（MQTT・他の HA ドメイン等）。型は揃ったので足すだけ。
-- **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**git プローブは実装済み**（`git.js`）。
-  他のプローブ（ビルド/テスト状態・開いてるファイル・ディスク残量）は同じ型に沿って足すだけ。open-ended な
-  delegate seam（§7-2）は要ると分かってから。
+- **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**git（二値）・ディスク（しきい値）は実装済み**
+  （`git.js` / `disk.js`）。他（ビルド/テスト状態 等）は同じ型に沿って足すだけ。「開いてるファイル」はアクティブ
+  ウィンドウ依存で Wayland 不可・プライバシーのため見ない（activity.js と同方針）。open-ended な delegate
+  seam（§7-2）は要ると分かってから。
 - **出力**：物理スタックチャン/OpenCLAW を v0 client として喋らせる実機側＋サーボ/LED の cap 語彙拡張（§3-2）。**要実機**。
 
 ```sh
@@ -204,6 +207,10 @@ node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ
 clean↔dirty の遷移で `git.dirty`/`git.clean` を投げる（HA の home/away と同型）。`ctx.n`＝未コミット数・
 `ctx.repo`＝リポ名を LLM persona が織り込む（「foo に3件たまってるぞ」）。コマンド実行は `opts.run` 注入で
 テストし、実 git は叩かない（`git.test.js`）。これが soft を構造で守る形＝*読むのは固定の readonly 一点*。
+
+**しきい値型：[disk.js](disk.js)** — git が二値遷移なのに対し、こちらは `df` の空き率が `TZ_DISK_MIN_PCT`
+（既定 10）を割ったかで `disk.low`/`disk.ok`（weather・work.N と同じしきい値またぎ）。同じイベント源
+パターンが**二値でもしきい値でも回る**ことを示す。`ctx.freePct`/`ctx.freeGb` を LLM が織り込む。
 
 ### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
 

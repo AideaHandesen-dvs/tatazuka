@@ -49,6 +49,9 @@ const LLM_SITUATIONS = {
   // Git（connectors/git.js が未コミット状態の変化を検知。ctx.n に未コミット数・ctx.repo にリポ名）
   'git.dirty':      '監視しているリポジトリに未コミットの変更ができた。こまめにコミットしろとそれとなく促す',
   'git.clean':      '未コミットの変更が片付いた（コミット／退避された）。さりげなく認める',
+  // ディスク（connectors/disk.js が空き容量のしきい値またぎを検知。ctx.freePct に空き率・ctx.freeGb に空き GB）
+  'disk.low':       'ディスクの空き容量が少なくなってきた。片付けるよう促す',
+  'disk.ok':        'ディスクの空き容量に余裕が戻った。さりげなく安心する',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -141,6 +144,11 @@ function buildUser(situation, desc, ctx, ruleInUser) {
     s += situation === 'git.dirty'
       ? `\n${where}に未コミットの変更が${ctx.n}件`
       : `\n${where}の未コミットの変更が片付いた`;
+  }
+  // ディスク（disk.*）：空き率と空き GB を添える（「残り8%、7.6GB だぞ」のように織り込ませる）
+  if (ctx && (situation === 'disk.low' || situation === 'disk.ok')) {
+    const gb = ctx.freeGb != null ? `（約${ctx.freeGb}GB）` : '';
+    s += `\nディスクの空き: ${ctx.freePct}%${gb}`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
