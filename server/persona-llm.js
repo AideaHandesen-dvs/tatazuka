@@ -62,6 +62,10 @@ const LLM_SITUATIONS = {
   // 通信レート（connectors/nic.js が rx+tx の差分でレートを検知。ctx.mbps に MB/s）
   'nic.busy':       '通信量が増えて、何か大きい通信が続いているらしい',
   'nic.idle':       '続いていた通信が落ち着いた',
+  // バッテリー（connectors/battery.js が放電中の残量しきい値またぎ＋満充電を検知。ctx.capacity に残量%・ctx.charging に充電中か）
+  'battery.low':    'バッテリー残量が少なくなってきた（放電中）。充電するよう促す',
+  'battery.ok':     '電源につないで充電が始まった（残量の心配が消えた）。さりげなく安心する',
+  'battery.full':   '満充電なのに電源を繋ぎっぱなしにしている。電池をいたわって、そろそろ抜くよう促す',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -179,6 +183,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 通信レート（nic.*）：今のレートを添える（「3MB/s 出てるぞ」のように織り込ませる）
   if (ctx && (situation === 'nic.busy' || situation === 'nic.idle')) {
     s += `\n通信レート: ${ctx.mbps} MB/s`;
+  }
+  // バッテリー（battery.*）：残量と充電状態を添える（「残り15%、まだ放電中だぞ」のように織り込ませる）
+  if (ctx && (situation === 'battery.low' || situation === 'battery.ok' || situation === 'battery.full')) {
+    s += `\nバッテリー残量: ${ctx.capacity}%（${ctx.charging ? '充電中' : '放電中'}）`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

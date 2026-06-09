@@ -47,7 +47,7 @@ node --test connectors/*.test.js   # connector（入力プローブ）の契約�
   X11/Wayland 出力のパース・バックエンド選択・ツール不在時の縮退を固定。配線は `behavior.test.js`。
 - **connector プローブ**（`connectors/*.test.js`）：IO（コマンド/ファイル/時計）を注入し、各プローブの
   契約を固定——HA（在席遷移）・git（未コミット/未 push・衝突繰り越し）・disk/memory（しきい値）・
-  net（二値）・nic（差分レート）・hysteresis（シュミット＋デバウンス）。実機を CI に持ち込まない。
+  net（二値）・nic（差分レート）・battery（充電ゲート＋満充電）・hysteresis（シュミット＋デバウンス）。実機を CI に持ち込まない。
 
 `<このマシン>` は `localhost`、またはホスト名 / 表示端末から届く LAN IP（例 `192.168.x.x`）。
 
@@ -262,7 +262,7 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 
 - behavior.js は `poll()` を持つ入力源を **`sources: [...]`** で一様に受ける（activity もその一員）。
   serve.js の `makeSources()` が env を見て有効な connector を組み立て、無効なものは `null` を落とす（PE）。
-- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic` は
+- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic`/`battery` は
   OpenClaw 連携の **soft 委譲を「ランタイム無し」で実装した readonly プローブ**（[../connectors/README.md](../connectors/README.md) §7-1）。
   読むのは固定の readonly 一点だけ（LLM にコマンドを生成・実行させない＝soft を構造で守る）。
 
@@ -274,6 +274,7 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | **memory** | `TZ_MEM=1`（＋`TZ_MEM_MIN_PCT` 既定 10） | 空きメモリ（`/proc/meminfo`・デバウンス付き） | `mem.low` / `mem.ok` |
 | **net** | `TZ_NET=1` | オンライン/オフライン（`/sys/class/net`・二値） | `net.online` / `net.offline` |
 | **nic** | `TZ_NIC=1`（＋`TZ_NIC_BUSY_MBPS` 既定 2） | 通信レート（`/proc/net/dev` 差分・MB/s） | `nic.busy` / `nic.idle` |
+| **battery** | `TZ_BATTERY=1`（＋`TZ_BATTERY_MIN_PCT` 既定 20） | 残量（`/sys/class/power_supply`・放電中だけ警告＋満充電ケア） | `battery.low` / `battery.ok` / `battery.full` |
 
 `friendly_name`（HA）は `ctx.who`、未コミット数・空き率・レート等は ctx で LLM persona に渡り、台詞に
 織り込まれる（「おかえり、◯◯」「foo に3件たまってるぞ」「残り8%だぞ」）。ルールベースは固定台詞。

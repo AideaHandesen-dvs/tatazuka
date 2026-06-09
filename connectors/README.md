@@ -168,6 +168,11 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 - [nic.js](nic.js) … **レート型の readonly プローブ**（通信レートの busy↔idle・§7-1）。`/proc/net/dev` の
   rx+tx 累計を**2 点読んで差分÷経過時間**でレート化し、`TZ_NIC_BUSY_MBPS`（既定 2）を超え続けると `nic.busy`、
   落ち着くと `nic.idle`（hysteresis を below=false で使う）。`TZ_NIC=1` で有効化。
+- [battery.js](battery.js) … **ゲート付きしきい値型の readonly プローブ**（残量の low↔ok ＋満充電ケア・§7-1）。git〜nic が
+  「開発者の机」寄りだったのに対し、**ノートを使う人全員**に効く同居人の気遣い。`/sys/class/power_supply/*` の
+  capacity / status を読み、**放電中に**残量が `TZ_BATTERY_MIN_PCT`（既定 20）を割ると `battery.low`、繋ぎ直せば
+  `battery.ok`（充電中は「切れそう」と言わない＝充電ゲート）。第二の軸として `Full` で繋ぎっぱを `battery.full`
+  （「もう満タン、抜いたら」＝電池いたわり・git の二軸と同型）。`TZ_BATTERY=1` で有効化。
 - [hysteresis.js](hysteresis.js) … しきい値プローブ共有の**判定部品**（シュミットトリガ＝二閾値＋任意デバウンス）。
   純ロジック・IO なし。disk（即時）/ memory（デバウンス）/ nic（below=false）が載る。`makeThreshold({low,high,below,debounce}).feed(v)→'enter'|'exit'|null`。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
@@ -234,12 +239,22 @@ HA・git と同じ素の二値遷移。`net.online` で `ctx.iface`（経路）�
 **2 点読んで差分÷経過時間**でレート（MB/s）にする（瞬間値でなく窓平均＝軽いローパス）。「大きいほど警戒」
 なので hysteresis を **below=false** で使う。`ctx.mbps` を LLM が織り込む。時計は `opts.now` 注入でテスト。
 
+**ゲート付きしきい値型：[battery.js](battery.js)** — disk と同じ残量しきい値だが、**ブール条件（放電中か）で
+ゲートする**のが新しい肝：残量が低くても**電源に繋がっていれば警告しない**（充電中に「切れそう」は嘘）。
+これを別ロジックにせず型に閉じ込めるため、hysteresis には「放電中なら実残量・それ以外は安全値 100」を流す
+——`battery.low` は放電中にしか入らず、繋ぎ直せば 100 が流れて exit＝`battery.ok`。第二の軸（git の dirty/ahead と
+同型）で `Full` 繋ぎっぱを `battery.full`（電池いたわり）。git〜nic が「開発者の机」寄りだったのに対し、
+**ノート利用者全員**に効く readonly はこれ——**開発者ニッチより、コンピュータを触る大多数に届く観察を優先**する転回点。
+`ctx.capacity`/`ctx.charging` を LLM が織り込む。
+
 **ばたつき対策＝共有部品 [hysteresis.js](hysteresis.js)**：threshold プローブの「ばたつき（flapping）」は
 二要因あり、別レイヤで潰す——①**縁のチャタ**（値が閾値付近でゆらぐ）→ **シュミットトリガ**（low/high の
 二閾値・帯の中は維持）②**スパイク**（一瞬だけ跨ぐ）→ **デバウンス**（N 連続で確定）。`makeThreshold` が
 両方を持ち、disk は debounce=1（容量はゆっくり）、memory は debounce=3（30 秒 tick で約 90 秒の継続）、
 nic は below=false＋debounce=2。これで遷移型は **二値（git/HA/net）／即時しきい値（disk）／デバウンス
-しきい値（memory）／レート（nic）** の四つが揃った。
+しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）** が揃った。battery は hysteresis を
+そのまま使いつつ、**流す値の側でゲートする**（放電中=実値・充電中=安全値）ことでブール条件を別レイヤを
+足さずに型へ畳み込んだ例。
 
 ### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
 
