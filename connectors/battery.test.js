@@ -139,3 +139,51 @@ test('macOS：pmset 不在/例外なら null（黙る・PE）', async () => {
   const b = createBattery({ run: pmsetRun(['!throw']), env: ENV, platform: 'darwin' });
   assert.equal(await b.poll(), null);
 });
+
+// ===== OS 別バックエンド：Windows（Win32_Battery）=====（README §7-3・確定③）
+// opts.platform='win32' で readPowerWin 経路に入り、opts.run で実 powershell を叩かず Format-List 出力を注入。
+// BatteryStatus（CIM 列挙）を Linux 語彙へ正規化＝充電ゲート・ヒステリシス・満充電遷移は無改修で再利用。
+// WIN_NONE は実機 tiny10（VM＝電池無し）の verbatim＝Win32_Battery が空（→ null 縮退・§7-3 決定①）。
+// 放電/充電/満充電の行は Format-List の安定フォーマット（出力は CRLF なので fixture も \r\n で実バイト再現）。
+const wcrlf = (s) => s.replace(/\n/g, '\r\n');
+const WIN_NONE = ''; // 実機 tiny10 verbatim：電池無し＝Win32_Battery が空
+const winBatt = (cap, status) =>
+  wcrlf(`\nEstimatedChargeRemaining : ${cap}\nBatteryStatus            : ${status}\nAvailability             : 3\n\n`);
+const WB_DIS = (cap) => winBatt(cap, 1);  // 1 = Discharging（Other）→ 警告ゲート
+const WB_CHG = (cap) => winBatt(cap, 6);  // 6 = Charging → 中立
+const WB_FULL = (cap) => winBatt(cap, 3); // 3 = Fully Charged → 満充電いたわり
+
+test('win32：電池無し（実機 tiny10 verbatim・空）→ null（PE：黙る・§7-3 決定①の縮退）', async () => {
+  const src = createBattery({ run: pmsetRun([WIN_NONE, WIN_NONE]), env: ENV, platform: 'win32' });
+  assert.equal(await src.poll(), null);
+  assert.equal(await src.poll(), null);
+});
+
+test('win32：放電で残量が low↔ok をまたいで battery.low / battery.ok（§7-3・判定は無改修で再利用）', async () => {
+  const src = createBattery({ run: pmsetRun([WB_DIS(60), WB_DIS(15), WB_DIS(15), WB_DIS(60)]), env: ENV, platform: 'win32' });
+  assert.equal(await src.poll(), null);                  // prime（ok）
+  assert.deepEqual(await src.poll(), { situation: 'battery.low', ctx: { capacity: 15, charging: false } });
+  assert.equal(await src.poll(), null);                  // low→low：無変化
+  assert.deepEqual(await src.poll(), { situation: 'battery.ok', ctx: { capacity: 60, charging: false } });
+});
+
+test('win32：BatteryStatus 4（Low）も放電扱い＝充電中でなく警告ゲートが開く（§7-3・CIM 列挙の正規化）', async () => {
+  // 4=Low・5=Critical はバッテリー駆動の低残量＝Discharging に寄せる（1 だけ拾うと取りこぼす）。
+  const src = createBattery({ run: pmsetRun([winBatt(60, 1), winBatt(15, 4)]), env: ENV, platform: 'win32' });
+  assert.equal(await src.poll(), null);                  // prime（放電 60）
+  assert.deepEqual(await src.poll(), { situation: 'battery.low', ctx: { capacity: 15, charging: false } });
+});
+
+test('win32：充電ゲート（充電中は warn しない）＋満充電で battery.full（§7-3・BatteryStatus を正規化）', async () => {
+  const src = createBattery({ run: pmsetRun([WB_CHG(50), WB_CHG(8), WB_FULL(100)]), env: ENV, platform: 'win32' });
+  assert.equal(await src.poll(), null);                  // prime
+  assert.equal(await src.poll(), null);                  // 充電中の 8% は warn しない
+  assert.deepEqual(await src.poll(), { situation: 'battery.full', ctx: { capacity: 100, charging: true } });
+});
+
+test('win32：powershell 不在/例外なら null（黙る・PE）', async () => {
+  const a = createBattery({ run: pmsetRun([null, null]), env: ENV, platform: 'win32' });
+  assert.equal(await a.poll(), null);
+  const b = createBattery({ run: pmsetRun(['!throw']), env: ENV, platform: 'win32' });
+  assert.equal(await b.poll(), null);
+});

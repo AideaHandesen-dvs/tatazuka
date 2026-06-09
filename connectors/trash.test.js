@@ -66,3 +66,39 @@ test('件数の判定は OS 非依存（darwin でも full↔ok は同じ・read
   assert.deepEqual(await src.poll(), { situation: 'trash.full', ctx: { n: 150 } });
   assert.deepEqual(await src.poll(), { situation: 'trash.ok', ctx: { n: 70 } });
 });
+
+// ===== OS 別バックエンド：Windows（$Recycle.Bin の $R* 再帰カウント）=====（README §7-3・確定③）
+// linux/darwin は「場所だけの差」で readdir 共通だが、Windows の $Recycle.Bin は SID 別サブ＋$I/$R 構造で
+// readdir 一発では数えられない＝**専用の読み口**（PowerShell で $R* を再帰カウント）に分岐する。正規化先は
+// 同じ「件数」なので判定は無改修で再利用。opts.platform='win32'＋opts.run で実 powershell を叩かず注入する。
+// 実機 tiny10 は空＝Measure-Object .Count が "0"（CRLF）を返す（→ ok 側・喋らない）。
+const tcount = (n) => `${n}\r\n`; // Measure-Object .Count 出力（CRLF）
+function winTrashRun(seq) {
+  let i = 0;
+  return async (cmd) => (cmd === 'powershell' ? seq[Math.min(i++, seq.length - 1)] : null);
+}
+
+test('win32：$Recycle.Bin の $R* カウントを正規化＝full↔ok（実機 verbatim=0 も解ける・§7-3）', async () => {
+  // 実機の "0"（空）→ prime ok。以降は同フォーマットの件数で full↔ok（判定は readdir 経路と同一）。
+  const src = createTrash({ run: winTrashRun([tcount(0), tcount(150), tcount(70)]), platform: 'win32', env: ENV });
+  assert.equal(await src.poll(), null);                  // prime（実機 0＝空）
+  assert.deepEqual(await src.poll(), { situation: 'trash.full', ctx: { n: 150 } });
+  assert.deepEqual(await src.poll(), { situation: 'trash.ok', ctx: { n: 70 } });
+});
+
+test('win32：$Recycle.Bin を再帰し $R*（実体）を数える PowerShell を組む（§7-3）', async () => {
+  const calls = [];
+  const run = async (cmd, args) => { calls.push({ cmd, args }); return tcount(0); };
+  const src = createTrash({ run, platform: 'win32', env: ENV });
+  await src.poll();
+  assert.equal(calls[0].cmd, 'powershell');
+  assert.match(calls[0].args.at(-1), /\$Recycle\.Bin/);
+  assert.match(calls[0].args.at(-1), /\$R\*/); // $I（メタ）でなく $R（実体）を数える
+});
+
+test('win32：powershell 不在/数字が無ければ null（黙る・PE）', async () => {
+  const a = createTrash({ run: async () => null, platform: 'win32', env: ENV });
+  assert.equal(await a.poll(), null);
+  const b = createTrash({ run: async () => 'no number\r\n', platform: 'win32', env: ENV });
+  assert.equal(await b.poll(), null); // 数字が無い → 黙る
+});

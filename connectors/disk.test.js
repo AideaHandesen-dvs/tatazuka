@@ -93,3 +93,37 @@ test('マウント先に空白がある Mac 行でも壊れない（パーサは
   assert.equal(await src.poll(), null); // prime（ok・空き 60%）
   assert.deepEqual(await src.poll(), { situation: 'disk.low', ctx: { freePct: 33, freeGb: 0.6, path: '/mnt' } });
 });
+
+// ===== OS 別バックエンド：Windows（Win32_LogicalDisk）=====（README §7-3・確定③）
+// Windows に df は無いので別 CLI（PowerShell）。opts.platform='win32' で readDiskWin 経路に入り、opts.run で
+// 実 powershell を叩かず Format-List 出力を注入する。FreeSpace/Size（バイト）を正規化＝判定は無改修で再利用。
+// Windows 出力は CRLF（\r\n）なので fixture も実バイトどおり CRLF にして parser の \r 吸収を実地で効かせる。
+const crlf = (s) => s.replace(/\n/g, '\r\n');
+// Format-List 1 オブジェクトの安定フォーマット（前後に空行）。WIN_C_REAL の値は実機 tiny10 の verbatim。
+const winDisk = (free, size) =>
+  crlf(`\nDeviceID  : C:\nDriveType : 3\nFreeSpace : ${free}\nSize      : ${size}\n\n`);
+const WIN_C_REAL = winDisk(25591062528, 42291384320); // 実機 tiny10：空き 25591062528B / 42291384320B＝61% / 23.8GB
+const WIN_C_LOW = winDisk(2000000000, 42291384320);   // 同フォーマットで低空き：空き 5% / 1.9GB
+const WINENV = { TZ_DISK_PATH: 'C:' };
+
+test('win32：Win32_LogicalDisk（実機 tiny10 verbatim）を正規化＝df 不在 OS でも別 CLI で到達（§7-3）', async () => {
+  const src = createDisk({ run: dfRun([WIN_C_REAL, WIN_C_LOW]), platform: 'win32', env: WINENV });
+  assert.equal(await src.poll(), null); // prime（ok・61%）
+  assert.deepEqual(await src.poll(), { situation: 'disk.low', ctx: { freePct: 5, freeGb: 1.9, path: 'C:' } });
+});
+
+test('win32：df でなく Win32_LogicalDisk を DeviceID で絞って組む（末尾の \\ は落とす・§7-3）', async () => {
+  const r = dfRun([WIN_C_REAL]);
+  const src = createDisk({ run: r, platform: 'win32', env: { TZ_DISK_PATH: 'C:\\' } });
+  await src.poll();
+  assert.equal(r.calls[0].cmd, 'powershell');
+  assert.match(r.calls[0].args.at(-1), /Win32_LogicalDisk/);
+  assert.match(r.calls[0].args.at(-1), /DeviceID -eq 'C:'/);
+});
+
+test('win32：powershell 不在／FreeSpace 行が無ければ null（黙る・PE）', async () => {
+  const a = createDisk({ run: dfRun([null]), platform: 'win32', env: WINENV });
+  assert.equal(await a.poll(), null);
+  const b = createDisk({ run: dfRun([crlf('\nDeviceID  : C:\nDriveType : 3\n\n')]), platform: 'win32', env: WINENV });
+  assert.equal(await b.poll(), null); // FreeSpace/Size 行が無い → 黙る
+});

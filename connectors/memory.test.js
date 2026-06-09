@@ -115,3 +115,33 @@ test('macOS：vm_stat 不在/壊れ → null（黙る・PE）', async () => {
   const b = createMemory({ run: async (cmd) => (cmd === 'sysctl' ? MEMSIZE : 'garbage'), platform: 'darwin', env: ENV });
   assert.equal(await b.poll(), null); // Pages free 行が無い → 黙る
 });
+
+// ===== OS 別バックエンド：Windows（Win32_OperatingSystem）=====（README §7-3・確定③）
+// opts.platform='win32' で readMemWin 経路に入り、opts.run で実 powershell を叩かず Format-List 出力を注入。
+// Free/TotalVisibleMemorySize（どちらも kB＝/proc/meminfo と同単位）を正規化＝判定は無改修で再利用。
+// WMEM_REAL の値は実機 tiny10 の verbatim（出力は CRLF なので fixture も \r\n で実バイト再現）。
+const mcrlf = (s) => s.replace(/\n/g, '\r\n');
+const winMem = (free, total) =>
+  mcrlf(`\nFreePhysicalMemory     : ${free}\nTotalVisibleMemorySize : ${total}\n\n`);
+const WMEM_REAL = winMem(1703380, 4172952); // 実機 tiny10：1703380kB / 4172952kB＝avail 40.8% / 1.6GB
+const WMEM_HIGH = winMem(3500000, 4172952); // 同フォーマット高空き（prime ok 用・~83.9%）
+function winMemRun(outs) {
+  let i = 0;
+  return async (cmd) => (cmd === 'powershell' ? outs[Math.min(i++, outs.length - 1)] : null);
+}
+
+test('win32：Win32_OperatingSystem（実機 tiny10 verbatim）を正規化し mem.low（§7-3・判定は無改修で再利用）', async () => {
+  // WMEM_HIGH（~83.9%・prime ok）→ WMEM_REAL（40.8%）×3 で min 60 を割って確定（デバウンス 3）。
+  const src = createMemory({ run: winMemRun([WMEM_HIGH, WMEM_REAL, WMEM_REAL, WMEM_REAL]), platform: 'win32', env: { TZ_MEM: '1', TZ_MEM_MIN_PCT: '60' } });
+  assert.equal(await src.poll(), null); // prime（ok）
+  assert.equal(await src.poll(), null); // low 1
+  assert.equal(await src.poll(), null); // low 2
+  assert.deepEqual(await src.poll(), { situation: 'mem.low', ctx: { availPct: 40.8, availGb: 1.6 } }); // low 3 → 確定
+});
+
+test('win32：powershell 不在/壊れ → null（黙る・PE）', async () => {
+  const a = createMemory({ run: async () => null, platform: 'win32', env: ENV });
+  assert.equal(await a.poll(), null);
+  const b = createMemory({ run: winMemRun(['garbage no props']), platform: 'win32', env: ENV });
+  assert.equal(await b.poll(), null); // FreePhysicalMemory 行が無い → 黙る
+});

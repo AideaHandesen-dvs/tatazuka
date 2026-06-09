@@ -106,3 +106,45 @@ test('macOS：netstat 不在/例外なら null（黙る・PE）', async () => {
   const b = createNic({ run: async () => { throw new Error('boom'); }, platform: 'darwin', now: clock([0, 1000]), env: ENV });
   assert.equal(await b.poll(), null);
 });
+
+// ===== OS 別バックエンド：Windows（Win32_PerfRawData_Tcpip_NetworkInterface）=====（README §7-3・確定③）
+// opts.platform='win32' で readBytesWin 経路に入り、opts.run で実 powershell を叩かず Format-List 出力を注入。
+// PerfRawData は "Persec" 名でも生の累計カウンタ＝Linux/Mac と同じ「累計バイト合計」に正規化＝レート判定
+// （差分÷経過）は無改修で再利用。出力は CRLF なので fixture も \r\n で実バイト再現。インスタンス名は
+// parens→[]・/→_ にサニタイズされる（実機 tiny10 verbatim："Intel[R] PRO_1000 MT Network Connection"）。
+const ncrlf = (s) => s.replace(/\n/g, '\r\n');
+const winNicTotal = (total) =>
+  ncrlf(`\nName                : Intel[R] PRO_1000 MT Network Connection\nBytesReceivedPersec : ${total}\nBytesSentPersec     : 0\n\n`);
+const WIN_NIC_REAL = // 実機 tiny10 verbatim：rx 8240610116 + tx 346995353 ＝累計 8587605469
+  ncrlf('\nName                : Intel[R] PRO_1000 MT Network Connection\nBytesReceivedPersec : 8240610116\nBytesSentPersec     : 346995353\n\n');
+function winNicRun(totals) {
+  let i = 0;
+  return async () => totals[Math.min(i++, totals.length - 1)];
+}
+
+test('win32：実機 verbatim（サニタイズ名＋rx/tx 累計）を二重計上せず parse できる（§7-3）', async () => {
+  // 同値 2 回＝rate 0 → 黙る（parse 成功・クラッシュしない）。サニタイズ名 [R]/_ でも読めることを実データで固定。
+  const src = createNic({ run: winNicRun([WIN_NIC_REAL, WIN_NIC_REAL]), platform: 'win32', now: clock([0, 1000]), env: ENV });
+  assert.equal(await src.poll(), null); // prime（累計 8587605469 を採れた＝parse 成功）
+  assert.equal(await src.poll(), null); // 同値＝rate 0 → 黙る
+});
+
+test('win32：BytesReceived/SentPersec の累計差分でレート。busy↔idle（§7-3・判定は無改修で再利用）', async () => {
+  const B = 8587605469; // 実機 base 合計から積み上げ（0.1 → 3 → 3 → 0 → 0 MB/s）
+  const totals = [B, B + 100000, B + 3100000, B + 6100000, B + 6100000, B + 6100000];
+  const times = [0, 1000, 2000, 3000, 4000, 5000];
+  const src = createNic({ run: winNicRun(totals.map(winNicTotal)), platform: 'win32', now: clock(times), env: ENV });
+  assert.equal(await src.poll(), null);   // prime
+  assert.equal(await src.poll(), null);   // 0.1 MB/s（ok）
+  assert.equal(await src.poll(), null);   // 3 MB/s（busy 1・未確定）
+  assert.deepEqual(await src.poll(), { situation: 'nic.busy', ctx: { mbps: 3 } }); // busy 2 → 確定
+  assert.equal(await src.poll(), null);   // 0 MB/s（idle 1・未確定）
+  assert.deepEqual(await src.poll(), { situation: 'nic.idle', ctx: { mbps: 0 } });  // idle 2 → 確定
+});
+
+test('win32：powershell 不在/例外なら null（黙る・PE）', async () => {
+  const a = createNic({ run: async () => null, platform: 'win32', now: clock([0, 1000]), env: ENV });
+  assert.equal(await a.poll(), null);
+  const b = createNic({ run: async () => { throw new Error('boom'); }, platform: 'win32', now: clock([0, 1000]), env: ENV });
+  assert.equal(await b.poll(), null);
+});
