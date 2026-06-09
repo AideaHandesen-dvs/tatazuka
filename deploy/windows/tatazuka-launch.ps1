@@ -1,4 +1,4 @@
-# 佇か（tatazuka）Task Scheduler ラッパー（Windows / PowerShell）。
+﻿# 佇か（tatazuka）Task Scheduler ラッパー（Windows / PowerShell）。
 #
 # Task Scheduler のタスク XML は env ファイルも ~ も展開しない。そこで起動をこのラッパーに
 # 一段噛ませ、env を外出し読み込み・node を解決してから serve.js を前面実行する。
@@ -36,14 +36,27 @@ if (Test-Path -LiteralPath $envFile) {
   }
 }
 
+# --- ログ：%USERPROFILE%\.config\tatazuka\tatazuka.log（journal / ~/Library/Logs の対） ---
+# node 解決より前に用意する。node 不在のような起動前失敗も必ずログに残すため
+# （Hidden タスクの stderr はどこにも出ない＝ログが唯一の手掛かり）。
+$logDir = Join-Path $env:USERPROFILE '.config\tatazuka'
+if (-not (Test-Path -LiteralPath $logDir)) {
+  New-Item -ItemType Directory -Path $logDir | Out-Null
+}
+$log = Join-Path $logDir 'tatazuka.log'
+
 # --- node を解決：PATH 優先、無ければ定番の場所 -------------------------------
 # 公式 msi（Program Files\nodejs）／scoop／~/opt\node（prebuilt zip を symlink した場所）。
 $node = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
 if (-not $node) {
   # base が空（稀に ProgramFiles(x86) 不在）なら候補に入れない。Stop 下で Join-Path に null を渡すと落ちるため。
+  # ${env:ProgramFiles(x86)} は名前中の () が PS 5.1 パーサを壊す（ブレース誤認＝実機で確認）。
+  # GetEnvironmentVariable で曖昧さなく取る。
+  $pf   = [Environment]::GetEnvironmentVariable('ProgramFiles')
+  $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
   $cands = @()
-  if ($env:ProgramFiles)        { $cands += (Join-Path $env:ProgramFiles 'nodejs\node.exe') }
-  if (${env:ProgramFiles(x86)}) { $cands += (Join-Path ${env:ProgramFiles(x86)} 'nodejs\node.exe') }
+  if ($pf)   { $cands += (Join-Path $pf   'nodejs\node.exe') }
+  if ($pf86) { $cands += (Join-Path $pf86 'nodejs\node.exe') }
   $cands += (Join-Path $env:USERPROFILE 'opt\node\node.exe')
   $cands += (Join-Path $env:USERPROFILE 'scoop\apps\nodejs\current\node.exe')
   foreach ($cand in $cands) {
@@ -51,16 +64,12 @@ if (-not $node) {
   }
 }
 if (-not $node) {
-  Write-Error '佇か: node が見つからない（PATH か Program Files\nodejs などに入れて）'
+  # Write-Error は Stop 下で terminating＝exit 127 に届かず exit 1 になり、しかも stderr は
+  # Hidden タスクで消える（実機で確認）。ログに直接書いて 127 で抜ける。
+  ("[{0}] 佇か: node が見つからない（PATH か Program Files\nodejs などに入れて）" -f (Get-Date -Format s)) |
+    Out-File -FilePath $log -Append -Encoding utf8
   exit 127
 }
-
-# --- ログ：%USERPROFILE%\.config\tatazuka\tatazuka.log（journal / ~/Library/Logs の対） ---
-$logDir = Join-Path $env:USERPROFILE '.config\tatazuka'
-if (-not (Test-Path -LiteralPath $logDir)) {
-  New-Item -ItemType Directory -Path $logDir | Out-Null
-}
-$log = Join-Path $logDir 'tatazuka.log'
 
 # node を前面で実行する。このプロセス（powershell）がタスクの本体なので、node の終了コードが
 # そのままタスク結果になる：非ゼロ（＝クラッシュ）なら XML の RestartOnFailure が起こし直す

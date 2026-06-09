@@ -10,7 +10,7 @@
 |---|---|---|
 | Linux | systemd **user** サービス（`systemd/tatazuka.service`） | ✅ landed（2026-06-09・実機 Linux で動作確認） |
 | macOS | launchd（LaunchAgent・`launchd/com.tatazuka.server.plist`） | ✅ landed（2026-06-09・osx-kvm Catalina で動作確認） |
-| Windows | Task Scheduler（ログオン時タスク・`windows/tatazuka.xml` ＋ラッパー `windows/tatazuka-launch.ps1`） | 🚧 テンプレ用意済・**実機検証は未**（ラボ tiny10 に node 不在） |
+| Windows | Task Scheduler（ログオン時タスク・`windows/tatazuka.xml` ＋ラッパー `windows/tatazuka-launch.ps1`） | 🟡 **構造は実機 tiny10 で実証**（2026-06-10・PS5.1 parse／schtasks UTF-16 登録／ログオン+LeastPrivilege／RUN→fail-soft 127＋ログ）。**node happy-path（HTTPS 200・crash 復活）のみ未**＝ラボに node 不在 |
 
 上表の「landed」は**自動起動ユニットが効くこと**を指す。**インストーラとは別**。次節で分ける。
 
@@ -20,7 +20,7 @@
 
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
-| **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ Linux＋macOS landed・Windows テンプレ用意済（実機検証は未／上表） |
+| **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ Linux＋macOS landed・Windows は構造を実機実証済（node happy-path のみ未／上表） |
 | **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | ⬜ まだ。今は手順を**手で**踏む |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
@@ -183,10 +183,13 @@ Copy-Item "$env:USERPROFILE\tatazuka\deploy\systemd\tatazuka.env.example" "$cfg\
 notepad "$cfg\tatazuka.env"        # 要る TZ_* のコメントを外す
 
 # 2) タスク XML を実値に展開して取り込む（__REPO__ / __USER__ を置換）
+#    schtasks /XML は UTF-16 を要求する（UTF-8 だと "unable to switch the encoding"）。
+#    置換と同時に prolog を UTF-16 へ書き換え、-Encoding Unicode（UTF-16 LE）で書き出す。
 $repo = "$env:USERPROFILE\tatazuka"
-(Get-Content "$repo\deploy\windows\tatazuka.xml") `
-  -replace '__REPO__', $repo -replace '__USER__', "$env:USERDOMAIN\$env:USERNAME" |
-  Set-Content "$env:TEMP\tatazuka.xml" -Encoding UTF8
+(Get-Content "$repo\deploy\windows\tatazuka.xml" -Raw) `
+  -replace '__REPO__', $repo -replace '__USER__', "$env:USERDOMAIN\$env:USERNAME" `
+  -replace 'encoding="UTF-8"', 'encoding="UTF-16"' |
+  Set-Content "$env:TEMP\tatazuka.xml" -Encoding Unicode
 schtasks /Create /TN tatazuka /XML "$env:TEMP\tatazuka.xml" /F
 
 # 3) 起動（ログオン時に自動だが、初回はその場で叩いて確認）
@@ -207,13 +210,25 @@ schtasks /Delete /TN tatazuka /F                          # 停止＋自動起�
 
 - **node の場所**はラッパーが PATH→`Program Files\nodejs`→`%USERPROFILE%\opt\node`→scoop の順で探す。
   別の場所なら `tatazuka-launch.ps1` を直す。
+- `tatazuka-launch.ps1` は **UTF-8 BOM 付き**で保存してある（編集時に剥がさないこと）。PowerShell 5.1 は
+  BOM 無しの非 ASCII スクリプトを ANSI コードページで誤読し、日本語 Windows（CP932）では日本語の直後の
+  `}` を食ってパースが壊れる（実機で確認）。BOM があれば UTF-8 と確定して読む。
 - **証明書が無い**と serve.js は起動時に落ちる（HTTPS 終端なので必須）。`%USERPROFILE%\.config\tatazuka\tatazuka.log` に出る。
-- 落ちても **3 秒間隔で最大 5 回**起こし直す（XML の `RestartOnFailure`）。クリーン終了（0）では再起動しない＝
-  systemd `Restart=on-failure` と同じ振る舞い。
+- 落ちても **1 分間隔で最大 5 回**起こし直す（XML の `RestartOnFailure`）。クリーン終了（0）では再起動しない＝
+  systemd `Restart=on-failure` と同じ振る舞い。ただし **Task Scheduler の最小間隔は 1 分**（PT1M）で、
+  systemd の `RestartSec=3`（秒単位）のような細かさは持てない＝Windows は再起動粒度が粗い。
 - ログオン時起動なので、**自動ログオンを切っている PC では手動ログオンまで佇かは出ない**
   （ログオン前から出したいならサービス化＝別物。per-user の佇かにはログオン時タスクが素直）。
 
-> **実機検証はまだ。** OS 別バックエンド検証に使った VM ラボ（tiny10）は**最小構成で node/OpenSSH 不在**
-> （§7-3・プローブは HTTP-POST 経路で裏取りした）。このユニットは Linux/macOS の landed と同じ約束を
-> Windows の枯れた仕組み（Task Scheduler）へ写したテンプレートだが、「効くことの実証」は node の入った
-> 素直な Windows 実機（または node を足したラボ）で別途取る。それまでは上表を 🚧 のままにしてある。
+> **実機検証：構造は通った／node happy-path だけ残る（2026-06-10）。** OS 別バックエンド検証に使った
+> VM ラボ（tiny10・Win10 / PS5.1）は**最小構成で node/OpenSSH 不在**（§7-3・操作は SPICE コンソールから
+> `irm <host>/p.ps1 | iex` の HTTP-POST 経路）。この経路で次を**実機実証**した：①ラッパーが実 PS5.1 で
+> parse 通る ②タスク XML を実 schtasks が受理して登録できる ③登録定義がログオントリガ・LeastPrivilege
+> （管理者不要）・`RestartOnFailure PT1M×5`・Hidden で正しい ④`schtasks /Run` でラッパーが発火し、env 読み込み・
+> node 探索を経て **exit 127 で fail-soft しログに理由を残す**。残るのは node を入れた実機での **happy-path**
+> （serve.js→HTTPS 200・実クラッシュ→自動復活）だけ＝そこは Linux/macOS の landed と同形。
+>
+> この検証で実機しか炙り出せないバグを 5 件捕って直した（テンプレ初版にあった）：`${env:ProgramFiles(x86)}`
+> が PS5.1 パーサを壊す／BOM 無し UTF-8 を日本語 Windows が誤読し `}` を食う（→ BOM 付与）／schtasks は
+> UTF-8 を蹴り UTF-16 を要る／`Interval` 最小は 1 分で `PT3S` は範囲外／`Write-Error`(Stop) が `exit 127` を
+> 食い診断が Hidden で消える（→ ログ先出し）。ローカルの構文チェックでは一つも見えなかった。

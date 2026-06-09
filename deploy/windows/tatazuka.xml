@@ -3,10 +3,13 @@
   佇か（tatazuka）Task Scheduler タスク テンプレート（Windows）。
   設置手順は deploy/README.md を参照。__REPO__ / __USER__ を実値に置換してから取り込む：
 
+    # schtasks /XML は UTF-16 を要求する（UTF-8 だと "unable to switch the encoding"＝実機で確認）。
+    # 置換と同時に prolog を UTF-16 へ書き換え、-Encoding Unicode（UTF-16 LE）で書き出す。
     $repo = "$env:USERPROFILE\tatazuka"
-    (Get-Content "$repo\deploy\windows\tatazuka.xml") `
-      -replace '__REPO__', $repo -replace '__USER__', "$env:USERDOMAIN\$env:USERNAME" |
-      Set-Content "$env:TEMP\tatazuka.xml" -Encoding UTF8
+    (Get-Content "$repo\deploy\windows\tatazuka.xml" -Raw) `
+      -replace '__REPO__', $repo -replace '__USER__', "$env:USERDOMAIN\$env:USERNAME" `
+      -replace 'encoding="UTF-8"', 'encoding="UTF-16"' |
+      Set-Content "$env:TEMP\tatazuka.xml" -Encoding Unicode
     schtasks /Create /TN tatazuka /XML "$env:TEMP\tatazuka.xml" /F
 
   ログオン時起動（systemd の enable + default.target / launchd RunAtLoad の対）。秘密は
@@ -58,10 +61,12 @@
     <!-- 常駐サーバなので実行時間に上限を設けない（PT0S＝無制限） -->
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
-    <!-- 落ちても起こし直す：3 秒間隔で最大 5 回（systemd Restart=on-failure + RestartSec=3
-         + StartLimitBurst=5 / launchd ThrottleInterval の対）。クリーン終了(0)では再起動しない -->
+    <!-- 落ちても起こし直す：1 分間隔で最大 5 回（systemd Restart=on-failure + StartLimitBurst=5 /
+         launchd KeepAlive の対）。クリーン終了(0)では再起動しない。
+         ※ Task Scheduler の Interval は最小 1 分（PT1M）＝systemd の RestartSec=3 のような秒単位は
+           範囲外で弾かれる（実機 schtasks で確認）。Windows は再起動粒度が粗い。 -->
     <RestartOnFailure>
-      <Interval>PT3S</Interval>
+      <Interval>PT1M</Interval>
       <Count>5</Count>
     </RestartOnFailure>
   </Settings>
