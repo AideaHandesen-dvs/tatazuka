@@ -149,6 +149,23 @@ test('後処理：同じ行に「／照れ」形式で漏れた末尾 mood タ�
   }
 });
 
+test('後処理：「／」で言い回しを並べ続ける run-on は最初の節で断つ', async () => {
+  // 3B が敬語/古語ゴーストで頻発させる run-on（実測：おぼろの "…かや／わし、…／わし、…"）。
+  // ／ は一言に本来不要なので最初の節だけ残す。残った末尾 mood タグもまとめて剥がす。
+  const cases = [
+    ['雨じゃな／ぬしの傘かくかや', '雨じゃな'],
+    ['ぬし、楽しむかや／わし、悪くないじゃ／わし、適度じゃ／ぬし、取り直すかや', 'ぬし、楽しむかや'],
+    ['ご主人様、休んでくださいませ／わたくし、お疲れ様でございます', 'ご主人様、休んでくださいませ'],
+  ];
+  for (const [raw, want] of cases) {
+    const p = createLLMPersona({
+      provider: stubProvider(`{"text":"${raw}","mood":"通常"}`),
+      fallback: stubFallback(),
+    });
+    assert.deepEqual(await p.line('idle'), { text: want, mood: '通常' }, `raw=${JSON.stringify(raw)}`);
+  }
+});
+
 test('後処理：本文が自然に mood 語で終わるとき（区切り無し）は剥がさない', async () => {
   // "今日は怒り心頭だ" のように mood 語が本文の一部なら触らない（区切り／括弧が無いので対象外）
   const p = createLLMPersona({

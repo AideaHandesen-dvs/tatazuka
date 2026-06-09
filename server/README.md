@@ -155,7 +155,9 @@ SDK は入れない（`ws` を自前実装したのと同じ方針）：
 - **ollama**：`POST {OLLAMA_HOST}/api/chat`（`stream:false`）。既定モデルは環境依存なので
   `TZ_LLM_MODEL` で指定（例 `qwen2.5:3b` 等の軽量モデル）。オフライン・無料・ローカル完結。
   小型モデルは JSON の後に特殊トークンを吐いて暴走しがちなので `options` で生成長（num_predict）・
-  温度・stop（`<|im_start|>`等）を絞る。`format:"json"` は qwen2.5:3b で逆に mood の引用符落ち
+  温度・stop（`<|im_start|>`等）を絞る。さらに `repeat_penalty`（1.3）で「複数案を `／` で並べ続ける」
+  run-on ループを抑える（敬語の厚いゴーストで尻切れ・自名垂れ流しの主因。実測で減るが消え切らないので
+  後処理でも `／` を断つ）。`format:"json"` は qwen2.5:3b で逆に mood の引用符落ち
   （`"mood":"呆れ}`）を誘発したため**使わず**、代わりに下の寛容抽出で受ける。
 - **claude**：`POST https://api.anthropic.com/v1/messages`（`anthropic-version: 2023-06-01`、
   `x-api-key`）。既定モデルは `claude-opus-4-8`。**短い台詞なら遅延・コスト的に
@@ -169,7 +171,7 @@ qwen2.5:3b は迷うと **`照れ` に逃げる**（実測で 51%）ので、OUT
 
 1. 最初の**バランスした** `{...}` を厳格 `JSON.parse`（後続ゴミに強い深さ判定）
 2. 失敗したら**寛容抽出**：`text`/`mood` を個別の正規表現で拾う（`"mood":"呆れ}` の引用符落ち等を救済）
-3. **後処理**：text に紛れた mood 語の行を除去・同行に `／照れ` 形式で漏れた末尾 mood タグを剥がし・改行を畳み・2文に詰める。`mood` 語彙外は通常に丸め
+3. **後処理**：text に紛れた mood 語の行を除去・`／` で並ぶ run-on を最初の節で断ち・同行に `（照れ）` 形式で漏れた末尾 mood タグを剥がし・改行を畳み・2文に詰める。`mood` 語彙外は通常に丸め
 4. それでも text が取れなければルール表にフォールバック
 
 **出力契約の置き場所（`TZ_LLM_RULE_POS`、既定 user）**：OUTPUT_RULE を system 末尾ではなく

@@ -144,7 +144,11 @@ function sanitizeText(text) {
   // "…。\n照れ" のように mood 語が単独行で紛れたら除去（末尾の句読点は剥がして判定）
   const kept = lines.filter((ln) => !MOODS.has(ln.replace(/[。、！？!?]+$/, '')));
   let t = (kept.length ? kept : lines).join('').trim();
-  // 行をまたがず "本文／照れ" のように同じ行に漏れた末尾 mood タグを剥がす（重ねて漏れても畳む）
+  // 3B が「複数案を ／ で並べ続ける」run-on（"…かや／わし、…／わし、…"・敬語ゴーストで頻発）を
+  // 最初の節で断つ。一言に ／ は本来不要なので、最初の ／ 以降は捨てる（先頭が ／ なら触らない）。
+  const slash = t.search(/[／/]/);
+  if (slash > 0) t = t.slice(0, slash).trim();
+  // 行をまたがず "本文（照れ）" のように同じ行に漏れた末尾 mood タグを剥がす（重ねて漏れても畳む）
   let prev;
   do { prev = t; t = t.replace(TRAILING_MOOD, '').trim(); } while (t && t !== prev);
   const parts = t.split(/(?<=[。！？!?])/).filter((s) => s.trim()); // 文末記号で分割（記号は残す）
@@ -208,7 +212,9 @@ function ollamaProvider(env) {
           model,
           stream: false,
           // 生成長を絞り・脱線トークンで止め・温度を下げて JSON を安定させる（短い台詞には十分）。
-          options: { num_predict: 120, temperature: 0.6, stop: ['<|im_start|>', '<|endoftext|>'] },
+          // repeat_penalty を上げて「／で同じ言い回しを並べ続ける」ループを抑える（敬語の厚い
+          // ゴーストで実測。3B は放っておくと "…ませ／わたくし、…／わたくし、…" と尻切れする）。
+          options: { num_predict: 120, temperature: 0.6, repeat_penalty: 1.3, stop: ['<|im_start|>', '<|endoftext|>'] },
           messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
         }),
         signal,
