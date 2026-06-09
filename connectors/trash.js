@@ -15,14 +15,18 @@
 // readdir 一発で済んで依存ゼロ・軽いから（巨大1ファイルより「散らかり具合」の体感に近い）。
 // TZ_TRASH_MAX（既定 100 件）を超え続けると trash.full、戻し閾値（-20 件）を下回ると trash.ok。
 //
-// OS 別バックエンド（README §7-3・確定③）：OS 差はゴミ箱の場所だけ＝readdir で件数を数える作りは不変。
-//   - linux : freedesktop の $HOME/.local/share/Trash/files
-//   - darwin: $HOME/.Trash
-//   - その他（Win 等）: linux 既定（$Recycle.Bin はメタデータ構造が違うので将来の分岐・今は縮退）
+// OS 別バックエンド（README §7-3・確定③）：linux/darwin は「場所だけの差」で readdir 共通だが、Windows の
+// $Recycle.Bin は SID 別サブフォルダ＋$I/$R メタデータ構造で readdir 一発では数えられない＝**専用の読み口**
+// （PowerShell で $R* を再帰カウント）に分岐する。正規化先は同じ「件数（number）」なので判定は無改修で再利用。
+//   - linux : freedesktop の $HOME/.local/share/Trash/files（readdir）
+//   - darwin: $HOME/.Trash（readdir・場所だけ差）
+//   - win32 : C:\$Recycle.Bin 配下の $R*（実体）を再帰カウント（readCountWin）。$I はメタなので数えない
+//   - その他: linux 既定（readdir。ゴミ箱が無ければ null 縮退＝PE）
 
 import { readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { run as defaultRun } from './run.js';
 import { makeThreshold } from './hysteresis.js';
 
 const MAX = 100;     // この件数を超えたら「溜まってる」とみなす
@@ -36,8 +40,31 @@ export function trashDir(e, plat) {
   return join(homedir(), '.local', 'share', 'Trash', 'files'); // freedesktop（linux 既定）
 }
 
-// 既定の読み口：ゴミ箱直下のエントリ数を返す。読めなければ null（PE：黙る）。
-function makeDefaultReadCount(dir) {
+// Windows の読み口：C:\$Recycle.Bin 配下の $R*（ゴミの実体）を再帰カウントする。$I はメタデータなので
+// 数えない＝1 アイテム 1 カウント。SID 別サブフォルダを跨ぐので -Recurse、隠し/システムを見るので -Force、
+// 他 SID への不可視はエラーを握り潰す（-ErrorAction SilentlyContinue）。出力は件数のみ。読めなければ null。
+async function readCountWin(run) {
+  let out;
+  try {
+    out = await run('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      "(Get-ChildItem -Path 'C:\\$Recycle.Bin' -Recurse -Force -Filter '$R*' -ErrorAction SilentlyContinue | Measure-Object).Count"]);
+  } catch {
+    return null; // run が投げた → 黙る
+  }
+  if (out == null) return null;
+  const m = String(out).match(/\d+/);
+  return m ? parseInt(m[0], 10) : null;
+}
+
+// 既定の読み口を OS で選ぶ：win32 は専用カウント、それ以外は readdir でゴミ箱直下のエントリ数。
+// 読めなければ null（PE：黙る）。opts.dir / opts.run はテスト・直接指定用。
+function makeDefaultReadCount(opts, e) {
+  const plat = opts.platform || process.platform;
+  if (plat === 'win32') {
+    const run = opts.run || defaultRun;
+    return () => readCountWin(run);
+  }
+  const dir = opts.dir || trashDir(e, opts.platform);
   return async () => {
     try {
       return (await readdir(dir)).length;
@@ -48,12 +75,11 @@ function makeDefaultReadCount(dir) {
 }
 
 // env / opts を見て connector を作る。TZ_TRASH が未設定なら null（＝オフ＝PE）。
-// opts.readCount / opts.dir / opts.platform / opts.max / opts.env はテスト・直接指定用。
+// opts.readCount / opts.dir / opts.run / opts.platform / opts.max / opts.env はテスト・直接指定用。
 export function createTrash(opts) {
   opts = opts || {};
   const e = opts.env || process.env;
-  const dir = opts.dir || trashDir(e, opts.platform);
-  const readCount = opts.readCount || makeDefaultReadCount(dir);
+  const readCount = opts.readCount || makeDefaultReadCount(opts, e);
 
   if (!e.TZ_TRASH || typeof readCount !== 'function') return null;
   const max = Number(opts.max ?? e.TZ_TRASH_MAX ?? MAX);

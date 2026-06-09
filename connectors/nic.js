@@ -19,7 +19,8 @@
 // レート判定（差分÷経過）は OS 非依存で再利用。
 //   - linux : /proc/net/dev の rx(0)+tx(8) 列（readBytesLinux・従来）
 //   - darwin: `netstat -ibn` の <Link#> 行の Ibytes+Obytes（readBytesMac。重複アドレス行は除外）
-//   - その他（Win 等）: linux 既定に落ち /proc 不在で null 縮退（将来 readBytesWin を同様に分岐）
+//   - win32 : `Win32_PerfRawData_Tcpip_NetworkInterface` の BytesReceived/SentPersec（生の累計・readBytesWin）
+//   - その他: linux 既定に落ち /proc 不在で null 縮退（PE）
 
 import { readFile } from 'node:fs/promises';
 import { run as defaultRun } from './run.js';
@@ -79,11 +80,41 @@ async function readBytesMac(run) {
   return found ? total : null;
 }
 
+// Windows の読み口：`Win32_PerfRawData_Tcpip_NetworkInterface` を PowerShell で読み、lo 以外の累計
+// 受信＋送信バイト合計（number）に正規化する。**PerfRawData は "Persec" 名でも生の累計カウンタ**（差分は
+// 上位 poll が時間で割る）。Format-List のオブジェクトは空行区切り（出力は CRLF なので \r を吸収）。インスタンス
+// 名は parens→[]・/→_ にサニタイズされる（例 "Intel[R] PRO_1000"）。loopback と _Total（集計）は除外。
+async function readBytesWin(run) {
+  let out;
+  try {
+    out = await run('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      'Get-CimInstance Win32_PerfRawData_Tcpip_NetworkInterface | Format-List Name,BytesReceivedPersec,BytesSentPersec']);
+  } catch {
+    return null;
+  }
+  if (out == null) return null;
+  const txt = String(out).replace(/\r/g, '');
+  let total = 0, found = false;
+  for (const block of txt.split(/\n[ \t]*\n/)) {           // Format-List のオブジェクト境界＝空行
+    const nameM = block.match(/^Name\s*:\s*(\S.*?)\s*$/m);
+    if (!nameM) continue;
+    const name = nameM[1].trim();
+    if (/loopback/i.test(name) || name === '_Total') continue; // ループバック・集計を除外
+    const rx = block.match(/^BytesReceivedPersec\s*:\s*(\d+)/m);
+    const tx = block.match(/^BytesSentPersec\s*:\s*(\d+)/m);
+    if (!rx || !tx) continue;
+    total += parseInt(rx[1], 10) + parseInt(tx[1], 10);     // 累計 received ＋ sent
+    found = true;
+  }
+  return found ? total : null;
+}
+
 // プラットフォームで読み口を選ぶ（§7-3・特権ゼロ）。opts.read（text seam）が明示なら従来の linux 経路を優先。
 function defaultReadBytes(opts) {
   if (opts.read) return readBytesLinux(opts.read);
   const plat = opts.platform || process.platform;
   if (plat === 'darwin') return readBytesMac(opts.run || defaultRun);
+  if (plat === 'win32') return readBytesWin(opts.run || defaultRun);
   return readBytesLinux(readNetDevText);
 }
 

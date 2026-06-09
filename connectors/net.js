@@ -16,7 +16,8 @@
 // OS 別バックエンド（README §7-3・確定③）：どちらも [{name, operstate}] に正規化＝遷移判定は OS 非依存。
 //   - linux : /sys/class/net/<if>/operstate（readIfacesLinux・従来）
 //   - darwin: `ifconfig` の flags（RUNNING を up とみなし、LOOPBACK は除外）（readIfacesMac）
-//   - その他（Win 等）: linux 既定に落ち /sys 不在で null 縮退（将来 readIfacesWin を同様に分岐）
+//   - win32 : `Get-CimInstance Win32_NetworkAdapter` の物理アダプタ・NetConnectionStatus（readIfacesWin）
+//   - その他: linux 既定に落ち /sys 不在で null 縮退（PE）
 
 import { readdir, readFile } from 'node:fs/promises';
 import { run as defaultRun } from './run.js';
@@ -62,10 +63,37 @@ async function readIfacesMac(run) {
   return ifaces;
 }
 
+// Windows の読み口：`Win32_NetworkAdapter` を PowerShell で読み [{name, operstate}] に正規化する。
+// Format-List のオブジェクトは空行で区切られる（出力は CRLF なので \r を吸収）。物理アダプタ（PhysicalAdapter
+// =True）だけ採る＝WAN Miniport や Kernel Debug 等の仮想を捨てる（下流の lo 除外と同じ「数えない」役）。
+// NetConnectionStatus==2（Connected）を up とみなす。名は NetConnectionID（"Ethernet"）優先・無ければ Name。
+async function readIfacesWin(run) {
+  let out;
+  try {
+    out = await run('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      'Get-CimInstance Win32_NetworkAdapter | Format-List Name,NetConnectionID,NetConnectionStatus,PhysicalAdapter,NetEnabled']);
+  } catch {
+    return null;
+  }
+  if (out == null) return null;
+  const txt = String(out).replace(/\r/g, '');
+  const ifaces = [];
+  for (const block of txt.split(/\n[ \t]*\n/)) {            // Format-List のオブジェクト境界＝空行
+    if (!/^PhysicalAdapter\s*:\s*True\s*$/m.test(block)) continue; // 物理だけ
+    const idM = block.match(/^NetConnectionID\s*:\s*(\S.*?)\s*$/m);
+    const nameM = block.match(/^Name\s*:\s*(\S.*?)\s*$/m);
+    const statusM = block.match(/^NetConnectionStatus\s*:\s*(\d+)/m);
+    const operstate = statusM && parseInt(statusM[1], 10) === 2 ? 'up' : 'down'; // 2 = Connected
+    ifaces.push({ name: idM ? idM[1].trim() : nameM ? nameM[1].trim() : 'net', operstate });
+  }
+  return ifaces;
+}
+
 // プラットフォームで読み口を選ぶ（§7-3・特権ゼロ）。opts.platform / opts.run はテスト用。
 function defaultReadIfaces(opts) {
   const plat = opts.platform || process.platform;
   if (plat === 'darwin') return readIfacesMac(opts.run || defaultRun);
+  if (plat === 'win32') return readIfacesWin(opts.run || defaultRun);
   return readIfacesLinux();
 }
 

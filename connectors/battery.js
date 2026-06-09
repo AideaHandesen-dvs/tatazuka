@@ -15,7 +15,8 @@
 // OS 別バックエンド（README §7-3・決定 2026-06-09）：defaultReadPower が process.platform で読み口を選ぶ。
 //   - linux : /sys/class/power_supply を直読（readPowerLinux・従来）
 //   - darwin: `pmset -g batt` を読み Linux 語彙へ正規化（readPowerMac・特権ゼロの CLI）
-//   - その他（Win 等）: 当面 linux 既定に落ちる＝/sys が無く null 縮退（PE。将来 readPowerWin を同様に分岐）
+//   - win32 : `Get-CimInstance Win32_Battery` の BatteryStatus/EstimatedChargeRemaining を正規化（readPowerWin）
+//   - その他: linux 既定に落ちる＝/sys が無く null 縮退（PE）
 // 正規化で {capacity, status, acOnline} の同じ形に揃えるので、判定（充電ゲート・ヒステリシス・満充電遷移）は
 // OS 非依存のまま再利用できる。**特権が要るものは取りにいかない**：温度のように昇格が要る読みは縮退側に置く（§7-3 決定①）。
 //
@@ -102,11 +103,42 @@ async function readPowerMac(run) {
   return { capacity, status, acOnline };
 }
 
+// Windows の読み口：`Win32_Battery` を PowerShell で読み、Linux 語彙 {capacity, status, acOnline} へ正規化。
+// Format-List は "Key : Value"（出力は CRLF なので \r を吸収）。バッテリーが無い（デスクトップ/VM＝実機で
+// 確認）と出力が空＝EstimatedChargeRemaining 行が無い → null（PE：黙る）。
+// BatteryStatus（CIM 列挙）→ status：1/4/5=放電系（Discharging＝警告ゲートを開く）・3=満充電（Full）・
+// 6〜9=充電中（Charging＝中立）・2(AC)/10/11=中立（Unknown）。放電系以外は AC 給電とみなす（acOnline・情報用）。
+async function readPowerWin(run) {
+  let out;
+  try {
+    out = await run('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      'Get-CimInstance Win32_Battery | Format-List EstimatedChargeRemaining,BatteryStatus,Availability']);
+  } catch {
+    return null; // run が投げた → 黙る
+  }
+  if (out == null) return null; // powershell 不在 → 黙る
+  const txt = String(out).replace(/\r/g, '');
+  const cap = txt.match(/^EstimatedChargeRemaining\s*:\s*(\d+)/m);
+  if (!cap) return null; // バッテリー行が無い（電源のみ）→ 黙る（PE）
+  const capacity = parseInt(cap[1], 10);
+  if (!Number.isFinite(capacity)) return null;
+  const bs = txt.match(/^BatteryStatus\s*:\s*(\d+)/m);
+  const code = bs ? parseInt(bs[1], 10) : 0;
+  const discharging = code === 1 || code === 4 || code === 5; // 放電（Other/Low/Critical）
+  const status =
+    discharging ? 'Discharging' :                            // → 警告ゲートが開く
+    code === 3 ? 'Full' :                                     // → 満充電いたわり
+    (code >= 6 && code <= 9) ? 'Charging' :                  // → 中立（充電中）
+    'Unknown';                                               // 2(AC) / 10 / 11 等＝中立
+  return { capacity, status, acOnline: !discharging };
+}
+
 // プラットフォームで読み口を選ぶ（§7-3・特権ゼロ）。opts.platform / opts.run はテストで OS・CLI を強制する用。
 function defaultReadPower(opts) {
   const plat = opts.platform || process.platform;
   if (plat === 'darwin') return readPowerMac(opts.run || defaultRun);
-  return readPowerLinux(); // linux 既定。Win 等は /sys が無く null 縮退（将来 readPowerWin を同様に分岐）
+  if (plat === 'win32') return readPowerWin(opts.run || defaultRun);
+  return readPowerLinux(); // linux 既定。/sys が無ければ null 縮退（PE）
 }
 
 // env / opts を見て connector を作る。TZ_BATTERY が未設定なら null（＝オフ＝PE）。

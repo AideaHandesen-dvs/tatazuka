@@ -17,7 +17,8 @@
 //   - linux : /proc/meminfo の MemAvailable/MemTotal（readMemLinux・従来）
 //   - darwin: `vm_stat` ＋ `sysctl -n hw.memsize`（readMemMac）。macOS に MemAvailable 相当は無いので
 //             available ≒ free + inactive + speculative + purgeable（再利用可能ページ）の近似。
-//   - その他（Win 等）: linux 既定に落ち /proc 不在で null 縮退（将来 readMemWin を同様に分岐）
+//   - win32 : `Get-CimInstance Win32_OperatingSystem` の Free/TotalVisibleMemorySize（kB・readMemWin）
+//   - その他: linux 既定に落ち /proc 不在で null 縮退（PE）
 //
 // 空きメモリ率が TZ_MEM_MIN_PCT（既定 10）を割ったら mem.low、戻し閾値（+5）を超えたら mem.ok。
 // デバウンスは 3 回連続（30 秒 tick なら約 90 秒の継続で確定）。
@@ -80,11 +81,35 @@ async function readMemMac(run) {
   return { availPct: round1((availBytes / total) * 100), availGb: round1(availBytes / 1024 / 1024 / 1024) };
 }
 
+// Windows の読み口：`Win32_OperatingSystem` を PowerShell で読み {availPct, availGb} に正規化する。
+// FreePhysicalMemory / TotalVisibleMemorySize はどちらも kB（/proc/meminfo と同じ単位）。Format-List の
+// "Key : Value"（出力は CRLF なので \r を吸収）。読めない・行が無ければ null（PE：黙る）。
+// 注：Windows の「空き」は厳密には MemAvailable 相当ではない（キャッシュ込みの余力は別）が、free 物理を
+// 素直な指標として採る（mac の available 近似と同じ割り切り）。
+async function readMemWin(run) {
+  let out;
+  try {
+    out = await run('powershell', ['-NoProfile', '-NonInteractive', '-Command',
+      'Get-CimInstance Win32_OperatingSystem | Format-List FreePhysicalMemory,TotalVisibleMemorySize']);
+  } catch {
+    return null;
+  }
+  if (out == null) return null;
+  const txt = String(out).replace(/\r/g, '');
+  const free = txt.match(/^FreePhysicalMemory\s*:\s*(\d+)/m);
+  const total = txt.match(/^TotalVisibleMemorySize\s*:\s*(\d+)/m);
+  if (!free || !total) return null;
+  const a = parseInt(free[1], 10), t = parseInt(total[1], 10); // kB
+  if (!t) return null;
+  return { availPct: round1((a / t) * 100), availGb: round1(a / 1024 / 1024) }; // kB → GiB
+}
+
 // プラットフォームで読み口を選ぶ（§7-3・特権ゼロ）。opts.read（text seam）が明示なら従来の linux 経路を優先。
 function defaultReadState(opts) {
   if (opts.read) return readMemLinux(opts.read);
   const plat = opts.platform || process.platform;
   if (plat === 'darwin') return readMemMac(opts.run || defaultRun);
+  if (plat === 'win32') return readMemWin(opts.run || defaultRun);
   return readMemLinux(readMeminfoText);
 }
 
