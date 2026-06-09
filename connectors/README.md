@@ -12,7 +12,7 @@ OpenCLAW / Home Assistant 等  ⇄  佇か本体（server/）  ⇄  表示クラ
 
 ---
 
-## 1. connector は二つの顔を持つ
+## 1. connector は三つの顔を持つ
 
 「連携」と一口に言うが、データの向きで性質が割れる。最初に名前を付けて分ける：
 
@@ -20,9 +20,16 @@ OpenCLAW / Home Assistant 等  ⇄  佇か本体（server/）  ⇄  表示クラ
 |---|---|---|---|
 | **入力コネクタ**（イベント源） | 外 → 佇か | 外部システムの出来事を `situation` タグに翻訳し人格層に渡す | weather.js / activity.js（README §6-4） |
 | **出力コネクタ**（表示先） | 佇か → 外 | server の語彙（`say`/`motion`/…）を別の身体で再生する | protocol v0 の語彙そのもの（§4-1） |
+| **委譲コネクタ**（指揮役・将来） | 佇か → 外 → 佇か | open-ended な佇か発の問い合わせ（`delegate(query)→text`）。**当面は作らない**——soft は入力コネクタで足りる | まだ無い（seam のみ・§7-2） |
 
-肝は、**どちらの契約も既存の設計判断が先に定義してしまっている**こと。connectors/ は新しい
-protocol を発明しない。第三者アダプタの**置き場**であり、契約は protocol/ と situation タグの継ぎ目に既にある。
+肝は、**どの契約も既存の設計判断が先に定義してしまっている**こと。connectors/ は新しい protocol を
+発明しない。第三者アダプタの**置き場**であり、契約は protocol/ と situation タグの継ぎ目に既にある。
+
+**当面、soft 委譲（README §7-1）は入力コネクタで足りる**——curated な readonly プローブ（git status・
+ビルド状態…）を §3-1 の蛇口に足し、既存 LLM がキャラで茶々る。新しい契約は要らない。第三の顔
+「委譲（往復・open-ended）」は「何でも自分で調べに行く部下」が本当に要ると分かってから作る seam で、
+戻り値の落とし所は入力と同じ（結果は `situation` の ctx になって人格層へ・`say` に乗るだけで protocol 不変）。
+詳細は §7。
 
 ### 1-1. 入力コネクタ — 外の出来事を situation に翻訳する
 
@@ -105,10 +112,10 @@ export function createXxx(opts) {
 なる——表示先の差し替えは、この同じルーティングの上で「どの身体に居るか」を選ぶことに帰着する。
 残るのは実機側（v0 client を喋る物理デバイス）と、サーボ/LED 用の cap 語彙の非破壊拡張だけ。
 
-> **OpenClaw は「出力＝身体」ではない（検討中）**：当初 `OpenCLAW` を表示先のように置いていたが、
-> 実態はエージェント・ランタイム（頭脳）。連携の向き（佇か＝アバター front-end／入力イベント源／
-> 佇か＝指揮役・OpenClaw＝手足）と、§1 の「操作主体にしない」との緊張（soft/hard 委譲）は
-> [../README.md](../README.md) §7-1 に到達点を記録。コード前にここを決める。
+> **OpenClaw は「出力＝身体」ではなく頭脳（決定）**：当初 `OpenCLAW` を表示先のように置いていたが、
+> 実態はエージェント・ランタイム（頭脳）。連携は **向き3（佇か＝指揮役）× soft 委譲** に決まり、
+> **soft の第一実装はランタイム無し**（既存 LLM＋ curated readonly プローブ＝入力コネクタ）で閉じる
+> （[../README.md](../README.md) §7-1）。open-ended な「佇か発の問い合わせ（第三の顔）」は将来の seam（§7-2）。
 
 ---
 
@@ -162,8 +169,37 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 **まだ無い（M5 の残り）**：
 
 - **入力**：HA 以外のイベント源（MQTT・他の HA ドメイン等）。型は揃ったので足すだけ。
+- **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**次に書くコードはこれ**——protocol 不変・依存ゼロ。open-ended な delegate seam（§7-2）は要ると分かってから。
 - **出力**：物理スタックチャン/OpenCLAW を v0 client として喋らせる実機側＋サーボ/LED の cap 語彙拡張（§3-2）。**要実機**。
 
 ```sh
 node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ）
 ```
+
+---
+
+## 7. 委譲：soft は入力コネクタで足りる／open-ended は将来の seam（README §7-1）
+
+佇か＝指揮役 × soft の**第一実装は、新しいコネクタ型を作らない**。soft の現実的な範囲（README §7-1）は
+**既存 LLM＋ curated readonly プローブ**で閉じ、それは §3-1 の入力コネクタそのものだから。
+
+### 7-1. 当面：readonly プローブ＝入力コネクタ
+
+「家の中も少し見えてる同居人」は、こちらが書いた readonly プローブを §3-1 の `poll()` 契約で足すこと：
+
+- 例：`git status`／ビルドの成否／開いているファイル／ディスク残量。weather・activity と同型
+  （IO 注入・PE 縮退・遷移検知）で、**読み取りしかしない**（書込・実行系コマンドを組み立てない）。
+- 戻りは `situation`＋ctx（`work.pr.unreviewed` 等）。`characters/` とルール表に台詞を用意する
+  （新タグを足したら persona 側の語彙も増やす＝§3-1 と同じ規律）。
+- **生成 ≠ 実行の罠を踏まない**：LLM にコマンドを生成・実行させない。プローブは*こちらが固定で書く*。
+  これが soft を「約束」でなく「構造」で守るということ（README §7-1）。
+
+新しい契約は要らない。**soft 委譲の near-term は「入力コネクタを増やす」に帰着する。**
+
+### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
+
+「何でも自分で調べに行く部下」が本当に欲しくなったら、外向きの `delegate(query) → text` を足す。
+戻り値の落とし所は入力と同じ（結果が `situation` の ctx）で protocol 不変。頭脳には **ReadOnly の
+サブエージェント**を据える——第一候補は**自作 PawAgent に ReadOnly autonomy 段＋構造化出力を足したもの**
+（README §7-1）。ReadOnly 段が soft の境界で、autonomy を上げる＝hard 化＝§1 を意識的に上書きする
+**意図的スイッチ**。サードパーティ（ZeroClaw 等）より中身を把握した自前を優先する。要ると分かるまで作らない。
