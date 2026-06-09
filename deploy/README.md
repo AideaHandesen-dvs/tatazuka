@@ -138,6 +138,28 @@ launchctl bootout gui/$(id -u)/com.tatazuka.server             # 停止＋自動
 - LaunchAgent はログイン時に起動するので、**自動ログインを切っている mac では手動ログインまで佇かは出ない**
   （システム全体の起動時に出したいなら LaunchDaemon だが、per-user の佇かには LaunchAgent が素直）。
 
+### 配布メモ（層②の mac 版）— .app / .dmg と Gatekeeper
+
+「.dmg を配って Applications にドラッグすれば動く」を素直に作れるか、の現実：
+
+- **`.app` を組むこと自体は IDE 不要**。`.app` は実体ただの決まった構造のフォルダ
+  （`Foo.app/Contents/MacOS/起動バイナリ`＋`Info.plist`＋`Resources/`）で、シェルで組める。
+  **node を `Resources/` に同梱**すれば、ユーザー側は何も入れなくていい（repo＋node バイナリを入れ、
+  `Contents/MacOS/` の起動スクリプトが serve.js を叩く）。ここまでは「ファイルを並べる」だけ。
+- **“警告なしでドラッグ起動”の壁は Gatekeeper**。今どきの macOS は署名・公証されてないアプリを隔離する。
+  素直に動かすには **Apple Developer 登録（年 $99）＋ Developer ID 証明書**で `codesign` →
+  `notarytool` で**公証**→staple が要る（これらは Apple の command-line ツール。フル Xcode IDE は不要だが
+  **有料アカウントは必須**）。公証しないなら、ユーザーが**右クリック→開く**か `xattr -d com.apple.quarantine`
+  で隔離を外す一手間で動く＝「摩擦ゼロ配布」だけが署名待ち。**コンパイル環境の話ではない**。
+- **佇か特有の捻り二つ**：
+  1. 佇かは前面アプリでなく**裏で常駐するサーバ**。ダブルクリックで窓が開くアプリより、上の
+     **LaunchAgent（裏で起きてる）**の形が本質に合う。consumer 向けに化粧するなら「**初回起動で
+     LaunchAgent＋証明書を仕込む `.app`**」＝層②の installer を `.app` で包む絵になる。
+  2. 表示は**別端末（スマホ/タブレット）のブラウザに逃がす**設計（CLAUDE.md）なので、サーバ証明書を
+     **見る側の端末に信頼させる**一手が要る——普通の mac アプリには無い、佇か固有の導入課題。
+
+つまり層②の mac 版は「.app を作れるか」ではなく「**公証（有料 Developer ID）＋常駐の仕込み＋他端末の証明書信頼**」が本体。①（LaunchAgent）が landed でも、ここは未着手のまま。
+
 ## Windows
 
 これから（上表）。OS 別バックエンド（§7-3）の検証に使った VM ラボ（tiny10）でそのまま実地確認する。
