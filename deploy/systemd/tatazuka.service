@@ -1,0 +1,39 @@
+# 佇か（tatazuka）— systemd **user** サービス（自動起動・自動再起動）
+#
+# これはテンプレート。設置手順は deploy/README.md を参照。
+#   cp deploy/systemd/tatazuka.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now tatazuka
+#
+# 設計上の約束（CLAUDE.md / README §8）：
+#   - リポジトリは ~/tatazuka に clone されている前提（リポ名・server/ パスは改名禁止）。
+#   - オリジン一つ・HTTPS 終端一箇所。serve.js が client/ を静的配信し、wss も同一ホスト。
+#   - 秘密（TZ_HASS_TOKEN / ANTHROPIC_API_KEY 等）は unit に書かず EnvironmentFile に逃がす。
+#   - env が無くても起動する（ルールベースで喋る＝プログレッシブ・エンハンスメント）。
+
+[Unit]
+Description=佇か（tatazuka）desktop mascot server — HTTPS + WebSocket (protocol v0)
+Documentation=https://github.com/AideaHandesen-dvs/tatazuka
+# 天気/Home Assistant など network が要る connector は、無くても PE で縮退する。
+# だから network を「必須依存」にはせず、順序付け（After）だけ緩く与える。
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/tatazuka
+# node のインストール場所に依存しないよう env 経由で起動（/usr/bin/env は絶対パス）。
+# 証明書パス・client パスは serve.js が import.meta.url 基準で解決するので cwd 非依存。
+ExecStart=/usr/bin/env node %h/tatazuka/server/serve.js
+# env はすべて外出し。先頭の "-" で「ファイルが無くても失敗しない」＝最小構成で起動できる（PE）。
+EnvironmentFile=-%h/.config/tatazuka/tatazuka.env
+# 落ちても起こし直す（同居人は黙って戻ってくる）。設定ミスでの無限再起動は StartLimit で抑える。
+Restart=on-failure
+RestartSec=3
+StartLimitIntervalSec=60
+StartLimitBurst=5
+# ログは journal へ（journalctl --user -u tatazuka -f で追える）。
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tatazuka
+
+[Install]
+WantedBy=default.target
