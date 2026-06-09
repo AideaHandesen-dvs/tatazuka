@@ -54,6 +54,8 @@ const LLM_SITUATIONS = {
   // ディスク（connectors/disk.js が空き容量のしきい値またぎを検知。ctx.freePct に空き率・ctx.freeGb に空き GB）
   'disk.low':       'ディスクの空き容量が少なくなってきた。片付けるよう促す',
   'disk.ok':        'ディスクの空き容量に余裕が戻った。さりげなく安心する',
+  'mem.low':        '空きメモリが少なくなって動作が重そう。何か閉じるよう促す',
+  'mem.ok':         '空きメモリに余裕が戻った。さりげなく安心する',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -158,6 +160,11 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   if (ctx && (situation === 'disk.low' || situation === 'disk.ok')) {
     const gb = ctx.freeGb != null ? `（約${ctx.freeGb}GB）` : '';
     s += `\nディスクの空き: ${ctx.freePct}%${gb}`;
+  }
+  // メモリ（mem.*）：空き率と空き GB を添える（「空き5%、0.8GB だぞ」のように織り込ませる）
+  if (ctx && (situation === 'mem.low' || situation === 'mem.ok')) {
+    const gb = ctx.availGb != null ? `（約${ctx.availGb}GB）` : '';
+    s += `\n空きメモリ: ${ctx.availPct}%${gb}`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

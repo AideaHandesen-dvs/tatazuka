@@ -161,6 +161,10 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
   空き率が `TZ_DISK_MIN_PCT`（既定 10）を割ると `disk.low`、回復で `disk.ok`。`TZ_DISK_PATH` で有効化。
+- [memory.js](memory.js) … **デバウンス付きしきい値の readonly プローブ**（空きメモリの low↔ok・§7-1）。
+  `/proc/meminfo` を読み、空き率が `TZ_MEM_MIN_PCT`（既定 10）を割った状態が続くと `mem.low`、回復で `mem.ok`。`TZ_MEM=1` で有効化。
+- [hysteresis.js](hysteresis.js) … しきい値プローブ共有の**判定部品**（シュミットトリガ＝二閾値＋任意デバウンス）。
+  純ロジック・IO なし。disk（即時）/ memory（デバウンス）が載る。`makeThreshold({low,high,below,debounce}).feed(v)→'enter'|'exit'|null`。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
   コピーして `read()`/`translate()` を実装すれば新しい入力 connector になる。
 - 各 `*.test.js` … `poll()` の契約（遷移検知・縮退・状態独立・認証）を固定。
@@ -213,6 +217,16 @@ clean と unpushed を同時に起こすので、clean を先に返し unpushed 
 **しきい値型：[disk.js](disk.js)** — git が二値遷移なのに対し、こちらは `df` の空き率が `TZ_DISK_MIN_PCT`
 （既定 10）を割ったかで `disk.low`/`disk.ok`（weather・work.N と同じしきい値またぎ）。同じイベント源
 パターンが**二値でもしきい値でも回る**ことを示す。`ctx.freePct`/`ctx.freeGb` を LLM が織り込む。
+
+**デバウンス型：[memory.js](memory.js)** — `/proc/meminfo` の空きメモリ率。ディスクと違い**瞬間値でジャギジャギ
+跳ねる**（ビルドで一瞬食う）ので、しきい値またぎを N 回連続で見て初めて確定する（スパイクを弾く）。
+`ctx.availPct`/`ctx.availGb` を LLM が織り込む。
+
+**ばたつき対策＝共有部品 [hysteresis.js](hysteresis.js)**：threshold プローブの「ばたつき（flapping）」は
+二要因あり、別レイヤで潰す——①**縁のチャタ**（値が閾値付近でゆらぐ）→ **シュミットトリガ**（low/high の
+二閾値・帯の中は維持）②**スパイク**（一瞬だけ跨ぐ）→ **デバウンス**（N 連続で確定）。`makeThreshold` が
+両方を持ち、disk は debounce=1（容量はゆっくり）、memory は debounce=3（30 秒 tick で約 90 秒の継続）。
+これで遷移型は **二値（git/HA）／即時しきい値（disk）／デバウンスしきい値（memory）** の三つが揃った。
 
 ### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
 

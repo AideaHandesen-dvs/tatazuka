@@ -20,6 +20,7 @@ import { createActivity } from './activity.js';
 import { createHomeAssistant } from '../connectors/home-assistant.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
+import { createMemory } from '../connectors/memory.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -40,7 +41,9 @@ const gitOn = !!process.env.TZ_GIT_REPO;
 // Disk プローブ（空き容量の low↔ok）。soft 委譲の readonly プローブ（しきい値型・README §7-1）。
 // TZ_DISK_PATH があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const diskOn = !!process.env.TZ_DISK_PATH;
-const makeSources = () => [createHomeAssistant(), createGit(), createDisk()].filter(Boolean); // 将来 connector が増えたらここに足す
+// Memory プローブ（空きメモリの low↔ok）。デバウンス付きしきい値（README §7-1）。TZ_MEM=1 で有効。
+const memOn = !!process.env.TZ_MEM;
+const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory()].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -122,6 +125,7 @@ server.listen(PORT, () => {
     hassOn && `Home Assistant（${process.env.TZ_HASS_PERSON}）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
+    memOn && 'memory',
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');

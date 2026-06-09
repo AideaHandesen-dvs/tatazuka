@@ -11,13 +11,15 @@
 //   - IO 注入：コマンド実行を opts.run で差し替え可能（テストで実 df を叩かない）。
 //   - 依存ゼロ：node 標準（child_process）のみ。読むのは固定の readonly 一点（soft を構造で守る・§7-1）。
 //
-// 空き率（free%）が TZ_DISK_MIN_PCT（既定 10）を下回ったら disk.low、回復したら disk.ok。
-// HA の home/away と同じ二値遷移だが、状態はしきい値から計算する。境界のばたつき抑制
-// （ヒステリシス）や inode・複数パスは将来の拡張（この型を増やす）。
+// 空き率（free%）が TZ_DISK_MIN_PCT（既定 10）を下回ったら disk.low、戻し閾値（+5）を超えたら disk.ok。
+// 判定は共有部品 hysteresis.js に委ねる（シュミットトリガ＝境界のチャタを帯で吸収）。容量はゆっくり
+// 変わるのでデバウンスは 1（即時）。inode・複数パスは将来の拡張（この型を増やす）。
 
 import { execFile } from 'node:child_process';
+import { makeThreshold } from './hysteresis.js';
 
 const MIN_PCT = 10; // この空き率（%）を下回ったら「残り少ない」とみなす
+const MARGIN = 5;   // 戻し閾値の余裕（ヒステリシス幅）
 
 // 既定のコマンド実行：短いタイムアウトで stdout を返す。失敗（df 不在・パス不正等）は null（PE：黙る）
 function defaultRun(cmd, args) {
@@ -42,8 +44,8 @@ export function createDisk(opts) {
   if (!path || typeof run !== 'function') return null;
   const minPct = Number(opts.minPct ?? e.TZ_DISK_MIN_PCT ?? MIN_PCT);
 
-  let primed = false;
-  let wasLow; // 直前の「残り少ない」状態（しきい値検知の状態。接続ごとに独立）
+  // 判定は共有部品に委ねる（ヒステリシス。接続ごとに独立した状態）。
+  const th = makeThreshold({ low: minPct, high: minPct + MARGIN, below: true, debounce: 1 });
 
   // `df -kP <path>`：空き率（free%）と空き GB を返す。読めなければ null（黙る＝PE）。
   // -P（POSIX）はファイルシステムごと 1 行を保証（長い名前でも折り返さない）。
@@ -72,11 +74,9 @@ export function createDisk(opts) {
     async poll() {
       const st = await read();
       if (!st) return null;
-      const low = st.freePct < minPct;
-      if (!primed) { primed = true; wasLow = low; return null; } // 初回は基準だけ
-      if (low === wasLow) return null;                            // しきい値をまたいでいない
-      wasLow = low;
-      return { situation: low ? 'disk.low' : 'disk.ok', ctx: { freePct: st.freePct, freeGb: st.freeGb, path } };
+      const ev = th.feed(st.freePct); // 'enter'（残り少ない）/ 'exit'（回復）/ null（初回・帯内・無変化）
+      if (!ev) return null;
+      return { situation: ev === 'enter' ? 'disk.low' : 'disk.ok', ctx: { freePct: st.freePct, freeGb: st.freeGb, path } };
     },
   };
 }
