@@ -10,7 +10,7 @@
 |---|---|---|
 | Linux | systemd **user** サービス（`systemd/tatazuka.service`） | ✅ landed（2026-06-09・実機 Linux で動作確認） |
 | macOS | launchd（LaunchAgent・`launchd/com.tatazuka.server.plist`） | ✅ landed（2026-06-09・osx-kvm Catalina で動作確認） |
-| Windows | Task Scheduler（ログオン時タスク） | ⬜ これから |
+| Windows | Task Scheduler（ログオン時タスク・`windows/tatazuka.xml` ＋ラッパー `windows/tatazuka-launch.ps1`） | 🚧 テンプレ用意済・**実機検証は未**（ラボ tiny10 に node 不在） |
 
 上表の「landed」は**自動起動ユニットが効くこと**を指す。**インストーラとは別**。次節で分ける。
 
@@ -20,7 +20,7 @@
 
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
-| **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ Linux＋macOS landed（上表） |
+| **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ Linux＋macOS landed・Windows テンプレ用意済（実機検証は未／上表） |
 | **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | ⬜ まだ。今は手順を**手で**踏む |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
@@ -160,7 +160,60 @@ launchctl bootout gui/$(id -u)/com.tatazuka.server             # 停止＋自動
 
 つまり層②の mac 版は「.app を作れるか」ではなく「**公証（有料 Developer ID）＋常駐の仕込み＋他端末の証明書信頼**」が本体。①（LaunchAgent）が landed でも、ここは未着手のまま。
 
-## Windows
+## Windows（Task Scheduler ログオン時タスク）
 
-これから（上表）。OS 別バックエンド（§7-3）の検証に使った VM ラボ（tiny10）でそのまま実地確認する。
-Task Scheduler のタスクも「秘密は env へ・無くても起動」の同じ約束で書く。
+管理者権限なしで完結する（`RunLevel=LeastPrivilege`・自ユーザーのログオン時に起動）＝systemd `--user` /
+LaunchAgent の対。タスク XML は env も `~` も展開しないので、launchd と同様に起動を**ラッパー**
+`windows/tatazuka-launch.ps1` に一段噛ませ、そこで env を外出し読み込み・node を解決する
+（「秘密は env へ・無くても起動」を移植）。
+
+```powershell
+# 0) 前提：%USERPROFILE%\tatazuka に repo・node・証明書（server\certs\）が揃っている
+#    - node は公式 msi でも scoop でも prebuilt zip でも可。zip なら展開先を
+#      %USERPROFILE%\opt\node に置く（ラッパーがそこと Program Files\nodejs を探す）。
+#    - 証明書：mkcert でも openssl でも可（HTTPS 終端に必須）:
+#        openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=localhost" `
+#          -keyout "$env:USERPROFILE\tatazuka\server\certs\key.pem" `
+#          -out   "$env:USERPROFILE\tatazuka\server\certs\cert.pem"
+
+# 1) env（要るものだけ。空でもルールベースで起動する＝Linux/macOS と同じ場所・同じ形式）
+$cfg = "$env:USERPROFILE\.config\tatazuka"
+New-Item -ItemType Directory -Force -Path $cfg | Out-Null
+Copy-Item "$env:USERPROFILE\tatazuka\deploy\systemd\tatazuka.env.example" "$cfg\tatazuka.env"
+notepad "$cfg\tatazuka.env"        # 要る TZ_* のコメントを外す
+
+# 2) タスク XML を実値に展開して取り込む（__REPO__ / __USER__ を置換）
+$repo = "$env:USERPROFILE\tatazuka"
+(Get-Content "$repo\deploy\windows\tatazuka.xml") `
+  -replace '__REPO__', $repo -replace '__USER__', "$env:USERDOMAIN\$env:USERNAME" |
+  Set-Content "$env:TEMP\tatazuka.xml" -Encoding UTF8
+schtasks /Create /TN tatazuka /XML "$env:TEMP\tatazuka.xml" /F
+
+# 3) 起動（ログオン時に自動だが、初回はその場で叩いて確認）
+schtasks /Run /TN tatazuka
+
+# 4) 確認
+schtasks /Query /TN tatazuka /V /FO LIST | Select-String "状態|Status|前回|Last"
+curl.exe -sk -o NUL -w "%{http_code}`n" https://localhost:8443/
+Get-Content "$cfg\tatazuka.log" -Tail 20 -Wait      # 起動ログ
+```
+
+運用：
+
+```powershell
+schtasks /End /TN tatazuka ; schtasks /Run /TN tatazuka   # 設定変更を反映（停止→再起動）
+schtasks /Delete /TN tatazuka /F                          # 停止＋自動起動オフ
+```
+
+- **node の場所**はラッパーが PATH→`Program Files\nodejs`→`%USERPROFILE%\opt\node`→scoop の順で探す。
+  別の場所なら `tatazuka-launch.ps1` を直す。
+- **証明書が無い**と serve.js は起動時に落ちる（HTTPS 終端なので必須）。`%USERPROFILE%\.config\tatazuka\tatazuka.log` に出る。
+- 落ちても **3 秒間隔で最大 5 回**起こし直す（XML の `RestartOnFailure`）。クリーン終了（0）では再起動しない＝
+  systemd `Restart=on-failure` と同じ振る舞い。
+- ログオン時起動なので、**自動ログオンを切っている PC では手動ログオンまで佇かは出ない**
+  （ログオン前から出したいならサービス化＝別物。per-user の佇かにはログオン時タスクが素直）。
+
+> **実機検証はまだ。** OS 別バックエンド検証に使った VM ラボ（tiny10）は**最小構成で node/OpenSSH 不在**
+> （§7-3・プローブは HTTP-POST 経路で裏取りした）。このユニットは Linux/macOS の landed と同じ約束を
+> Windows の枯れた仕組み（Task Scheduler）へ写したテンプレートだが、「効くことの実証」は node の入った
+> 素直な Windows 実機（または node を足したラボ）で別途取る。それまでは上表を 🚧 のままにしてある。

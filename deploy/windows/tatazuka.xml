@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  佇か（tatazuka）Task Scheduler タスク テンプレート（Windows）。
+  設置手順は deploy/README.md を参照。__REPO__ / __USER__ を実値に置換してから取り込む：
+
+    $repo = "$env:USERPROFILE\tatazuka"
+    (Get-Content "$repo\deploy\windows\tatazuka.xml") `
+      -replace '__REPO__', $repo -replace '__USER__', "$env:USERDOMAIN\$env:USERNAME" |
+      Set-Content "$env:TEMP\tatazuka.xml" -Encoding UTF8
+    schtasks /Create /TN tatazuka /XML "$env:TEMP\tatazuka.xml" /F
+
+  ログオン時起動（systemd の enable + default.target / launchd RunAtLoad の対）。秘密は
+  この XML でなく %USERPROFILE%\.config\tatazuka\tatazuka.env へ（ラッパー tatazuka-launch.ps1 が読む）。
+-->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>佇か（tatazuka）desktop mascot server — HTTPS + WebSocket (protocol v0)</Description>
+    <URI>\tatazuka</URI>
+  </RegistrationInfo>
+
+  <!-- ログイン時に起動（systemd default.target / launchd RunAtLoad に相当） -->
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+      <UserId>__USER__</UserId>
+    </LogonTrigger>
+  </Triggers>
+
+  <!-- ユーザー権限だけで動かす（root/管理者不要＝systemd user サービス / LaunchAgent と同じ） -->
+  <Principals>
+    <Principal id="Author">
+      <UserId>__USER__</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+
+  <Settings>
+    <!-- 二重起動しない（systemd の単一インスタンスに相当） -->
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <!-- 同居人はバッテリ駆動でも黙って戻ってくる。電源状態で止めない -->
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <!-- 天気/Home Assistant は network 不要でも PE で縮退する。network を必須にしない -->
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <!-- 裏で常駐（ProcessType Background / ProcessType=simple のサーバ相当） -->
+    <Hidden>true</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <!-- 常駐サーバなので実行時間に上限を設けない（PT0S＝無制限） -->
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <Priority>7</Priority>
+    <!-- 落ちても起こし直す：3 秒間隔で最大 5 回（systemd Restart=on-failure + RestartSec=3
+         + StartLimitBurst=5 / launchd ThrottleInterval の対）。クリーン終了(0)では再起動しない -->
+    <RestartOnFailure>
+      <Interval>PT3S</Interval>
+      <Count>5</Count>
+    </RestartOnFailure>
+  </Settings>
+
+  <Actions Context="Author">
+    <!-- ラッパー経由で起動（env 読み込み・node 解決・ログ追記はラッパー側）。窓は出さない -->
+    <Exec>
+      <Command>powershell.exe</Command>
+      <Arguments>-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "__REPO__\deploy\windows\tatazuka-launch.ps1"</Arguments>
+    </Exec>
+  </Actions>
+</Task>

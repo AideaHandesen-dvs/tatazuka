@@ -379,5 +379,5 @@ spawn は重い（~100–300ms）ので毎 tick poll に響く→キャッシュ
 **到達の射程は OS と導入の別軸。** OS バックエンドは「観察の到達」（この OS で家が見えるか）を広げるが、
 **到達の本丸は導入**——`git clone`＋node＝開発者の作法から、自動起動つきのエンドユーザー配布へ。
 **Linux=systemd user／macOS=launchd は landed**（[../deploy/](../deploy/README.md)・2026-06-09 各実機で実証）、
-Win Task Scheduler はこれから。導入は OS バックエンドとは独立した別議題（秘密は env へ逃がす・env 無くても起動）。
+Win=Task Scheduler ログオン時タスクはテンプレ用意済だが実機検証は未（ラボ tiny10 に node 不在）。導入は OS バックエンドとは独立した別議題（秘密は env へ逃がす・env 無くても起動）。
 §7-1 の「観察の射程（大多数向け）」とここの「到達の射程（OS×導入）」を混同しない。OS は既存 seam の内側で安く済む／導入は別途。
