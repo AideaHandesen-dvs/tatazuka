@@ -30,24 +30,13 @@
 // 1 poll に 1 遷移（git と同じ）：残量警告を先に返し、full 遷移は次の poll に繰り越す。
 
 import { readdir, readFile } from 'node:fs/promises';
-import { execFile } from 'node:child_process';
+import { run as defaultRun } from './run.js';
 import { makeThreshold } from './hysteresis.js';
 
 const MIN_PCT = 20; // この残量（%）を放電中に割ったら「切れそう」とみなす（disk より高い＝電池は 20% で逼迫）
 const MARGIN = 5;   // 戻し閾値の余裕（ヒステリシス幅）
 
 const BASE = '/sys/class/power_supply';
-
-// 既定のコマンド実行（disk と同型）：短いタイムアウトで stdout を返す。失敗（不在等）は null（PE：黙る）。
-function defaultRun(cmd, args) {
-  return new Promise((resolve) => {
-    try {
-      execFile(cmd, args, { timeout: 3000 }, (err, stdout) => resolve(err ? null : String(stdout)));
-    } catch {
-      resolve(null);
-    }
-  });
-}
 
 // Linux の読み口：/sys/class/power_supply を走査し、最初のバッテリーの capacity / status と AC の online を返す。
 // バッテリーが無い（デスクトップ）・読めなければ null（PE：黙る）。

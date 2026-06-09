@@ -9,7 +9,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTrash } from './trash.js';
+import { homedir } from 'node:os';
+import { createTrash, trashDir } from './trash.js';
 
 // readCount スタブ：件数の列を順に返す。null/'!throw' で失敗を演じる。
 function countRun(seq) {
@@ -48,4 +49,20 @@ test('読めない（null＝ゴミ箱無し・例外）なら null（黙る・PE
   assert.equal(await a.poll(), null);
   const b = createTrash({ readCount: countRun(['!throw']), env: ENV });
   assert.equal(await b.poll(), null);
+});
+
+// ===== OS 別バックエンド：macOS（ゴミ箱の場所）=====（README §7-3・確定③）
+// OS 差はディレクトリだけ＝readdir で件数を数える作りは不変。trashDir を platform で直接確かめる。
+test('trashDir：OS でゴミ箱の場所を選ぶ（darwin=~/.Trash／linux=freedesktop／TZ_TRASH_DIR 上書き）', () => {
+  assert.equal(trashDir({}, 'darwin'), `${homedir()}/.Trash`);
+  assert.equal(trashDir({}, 'linux'), `${homedir()}/.local/share/Trash/files`);
+  assert.equal(trashDir({ TZ_TRASH_DIR: '/tmp/t' }, 'darwin'), '/tmp/t'); // 明示が最優先（OS 不問）
+});
+
+test('件数の判定は OS 非依存（darwin でも full↔ok は同じ・readCount 注入）', async () => {
+  // ゴミ箱の場所が変わるだけで、件数しきい値の挙動は Linux と同一。
+  const src = createTrash({ readCount: countRun([10, 150, 70]), platform: 'darwin', env: ENV });
+  assert.equal(await src.poll(), null);                  // prime
+  assert.deepEqual(await src.poll(), { situation: 'trash.full', ctx: { n: 150 } });
+  assert.deepEqual(await src.poll(), { situation: 'trash.ok', ctx: { n: 70 } });
 });

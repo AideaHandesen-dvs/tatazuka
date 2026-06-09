@@ -68,3 +68,50 @@ test('TZ_MEM_MIN_PCT でしきい値を変えられる（空き 5% でも min 3%
   assert.equal(await src.poll(), null);
   assert.equal(await src.poll(), null);   // ずっと ok のまま
 });
+
+// ===== OS 別バックエンド：macOS（vm_stat ＋ sysctl hw.memsize）=====（README §7-3・確定③）
+// opts.platform='darwin' で readMemMac 経路に入り、opts.run で実コマンドを叩かず出力を注入する。
+// VM_REAL は実機 macOS 10.15.7（osx-kvm）の vm_stat verbatim、MEMSIZE は同機の hw.memsize（3GiB）。
+// available ≒ free+inactive+speculative+purgeable＝6268+306646+9380+88123=410417 ページ × 4096
+//   = 1,681,068,032 バイト / 3,221,225,472 = 52.2%（1.6GiB）。判定（ヒステリシス＋デバウンス）は無改修。
+const VM_REAL =
+  'Mach Virtual Memory Statistics: (page size of 4096 bytes)\n' +
+  'Pages free:                                6268.\n' +
+  'Pages active:                            316553.\n' +
+  'Pages inactive:                          306646.\n' +
+  'Pages speculative:                         9380.\n' +
+  'Pages throttled:                              0.\n' +
+  'Pages wired down:                        129264.\n' +
+  'Pages purgeable:                          88123.\n';
+const VM_HIGH = // 空き潤沢（prime ok 用・free だけ大きく）
+  'Mach Virtual Memory Statistics: (page size of 4096 bytes)\n' +
+  'Pages free:                               700000.\n' +
+  'Pages inactive:                                0.\n' +
+  'Pages speculative:                             0.\n' +
+  'Pages purgeable:                               0.\n';
+const MEMSIZE = '3221225472\n';
+// run スタブ：vm_stat は列を順に、sysctl は固定で返す。
+function macMemRun(vms) {
+  let i = 0;
+  return async (cmd) => {
+    if (cmd === 'sysctl') return MEMSIZE;
+    if (cmd === 'vm_stat') return vms[Math.min(i++, vms.length - 1)];
+    return null;
+  };
+}
+
+test('macOS：vm_stat＋hw.memsize（実機 verbatim）を正規化し mem.low（§7-3・判定は無改修で再利用）', async () => {
+  // VM_HIGH（~89%・prime ok）→ VM_REAL（52.2%）×3 で min 60 を割って確定。
+  const src = createMemory({ run: macMemRun([VM_HIGH, VM_REAL, VM_REAL, VM_REAL]), platform: 'darwin', env: { TZ_MEM: '1', TZ_MEM_MIN_PCT: '60' } });
+  assert.equal(await src.poll(), null); // prime（ok）
+  assert.equal(await src.poll(), null); // low 1
+  assert.equal(await src.poll(), null); // low 2
+  assert.deepEqual(await src.poll(), { situation: 'mem.low', ctx: { availPct: 52.2, availGb: 1.6 } }); // low 3 → 確定
+});
+
+test('macOS：vm_stat 不在/壊れ → null（黙る・PE）', async () => {
+  const a = createMemory({ run: async () => null, platform: 'darwin', env: ENV });
+  assert.equal(await a.poll(), null);
+  const b = createMemory({ run: async (cmd) => (cmd === 'sysctl' ? MEMSIZE : 'garbage'), platform: 'darwin', env: ENV });
+  assert.equal(await b.poll(), null); // Pages free 行が無い → 黙る
+});

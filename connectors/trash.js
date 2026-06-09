@@ -14,6 +14,11 @@
 // プライバシー：**件数だけ**を見て中身もファイル名も覗かない（download と同方針）。サイズでなく件数なのは
 // readdir 一発で済んで依存ゼロ・軽いから（巨大1ファイルより「散らかり具合」の体感に近い）。
 // TZ_TRASH_MAX（既定 100 件）を超え続けると trash.full、戻し閾値（-20 件）を下回ると trash.ok。
+//
+// OS 別バックエンド（README §7-3・確定③）：OS 差はゴミ箱の場所だけ＝readdir で件数を数える作りは不変。
+//   - linux : freedesktop の $HOME/.local/share/Trash/files
+//   - darwin: $HOME/.Trash
+//   - その他（Win 等）: linux 既定（$Recycle.Bin はメタデータ構造が違うので将来の分岐・今は縮退）
 
 import { readdir } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -23,9 +28,12 @@ import { makeThreshold } from './hysteresis.js';
 const MAX = 100;     // この件数を超えたら「溜まってる」とみなす
 const MARGIN = 20;   // 戻し閾値の余裕（ヒステリシス幅・件数なので広め）
 
-// 既定の監視先：freedesktop のゴミ箱本体（$HOME/.local/share/Trash/files）。env で差し替え可。
-function defaultDir(e) {
-  return e.TZ_TRASH_DIR || join(homedir(), '.local', 'share', 'Trash', 'files');
+// 既定の監視先：OS でゴミ箱の場所が違うので process.platform で選ぶ。TZ_TRASH_DIR で上書き可。
+// （純関数＝テストで platform を強制して経路を直接確かめられるよう export する）
+export function trashDir(e, plat) {
+  if (e.TZ_TRASH_DIR) return e.TZ_TRASH_DIR;
+  if ((plat || process.platform) === 'darwin') return join(homedir(), '.Trash');
+  return join(homedir(), '.local', 'share', 'Trash', 'files'); // freedesktop（linux 既定）
 }
 
 // 既定の読み口：ゴミ箱直下のエントリ数を返す。読めなければ null（PE：黙る）。
@@ -40,11 +48,11 @@ function makeDefaultReadCount(dir) {
 }
 
 // env / opts を見て connector を作る。TZ_TRASH が未設定なら null（＝オフ＝PE）。
-// opts.readCount / opts.max / opts.env はテスト・直接指定用。
+// opts.readCount / opts.dir / opts.platform / opts.max / opts.env はテスト・直接指定用。
 export function createTrash(opts) {
   opts = opts || {};
   const e = opts.env || process.env;
-  const dir = opts.dir || defaultDir(e);
+  const dir = opts.dir || trashDir(e, opts.platform);
   const readCount = opts.readCount || makeDefaultReadCount(dir);
 
   if (!e.TZ_TRASH || typeof readCount !== 'function') return null;

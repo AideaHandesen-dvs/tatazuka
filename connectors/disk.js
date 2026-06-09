@@ -15,22 +15,11 @@
 // 判定は共有部品 hysteresis.js に委ねる（シュミットトリガ＝境界のチャタを帯で吸収）。容量はゆっくり
 // 変わるのでデバウンスは 1（即時）。inode・複数パスは将来の拡張（この型を増やす）。
 
-import { execFile } from 'node:child_process';
+import { run as defaultRun } from './run.js';
 import { makeThreshold } from './hysteresis.js';
 
 const MIN_PCT = 10; // この空き率（%）を下回ったら「残り少ない」とみなす
 const MARGIN = 5;   // 戻し閾値の余裕（ヒステリシス幅）
-
-// 既定のコマンド実行：短いタイムアウトで stdout を返す。失敗（df 不在・パス不正等）は null（PE：黙る）
-function defaultRun(cmd, args) {
-  return new Promise((resolve) => {
-    try {
-      execFile(cmd, args, { timeout: 3000 }, (err, stdout) => resolve(err ? null : String(stdout)));
-    } catch {
-      resolve(null);
-    }
-  });
-}
 
 // env / opts を見て connector を作る。監視パスが無ければ null（＝この connector はオフ＝PE）。
 // opts.run / opts.path / opts.minPct / opts.env はテスト・直接指定用。
