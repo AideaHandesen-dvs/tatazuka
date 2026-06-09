@@ -88,3 +88,54 @@ test('読めない（null＝バッテリー無し・例外）なら null（黙�
   const b = createBattery({ readPower: powerRun(['!throw']), env: ENV });
   assert.equal(await b.poll(), null);
 });
+
+// ===== OS 別バックエンド：macOS（pmset）=====（README §7-3・決定 2026-06-09）
+// opts.platform='darwin' で readPowerMac 経路に入り、opts.run で実 pmset を叩かず出力を注入する。
+// 判定（充電ゲート・ヒステリシス・満充電遷移）は OS 非依存なので、Linux と同じ契約がそのまま効く。
+//   PMSET_NONE は実機 macOS 10.15.7（osx-kvm）の verbatim 出力＝電池無しの VM/デスクトップ。
+//   放電/充電/満充電の行は pmset の安定フォーマット（実ノートの形）。
+const PMSET_NONE = "Now drawing from 'AC Power'\n"; // 実機 VM の verbatim（バッテリー行なし）
+const pmset = (cap, src, state) =>
+  `Now drawing from '${src}'\n` +
+  ` -InternalBattery-0 (id=4456547)\t${cap}%; ${state}; 3:21 remaining present: true\n`;
+const PM_DIS = (cap) => pmset(cap, 'Battery Power', 'discharging');
+const PM_CHG = (cap) => pmset(cap, 'AC Power', 'charging');
+const PM_FULL = (cap) => pmset(cap, 'AC Power', 'charged');
+
+// run スタブ（disk.test の dfRun と同型）：pmset 出力を順に返す。
+function pmsetRun(outs) {
+  let i = 0;
+  return async (cmd, args) => {
+    const o = outs[Math.min(i++, outs.length - 1)];
+    if (o === '!throw') throw new Error('boom');
+    return o;
+  };
+}
+test('macOS：電池無し（実機 VM の pmset verbatim）→ null（PE：黙る・§7-3 決定①の縮退）', async () => {
+  const src = createBattery({ run: pmsetRun([PMSET_NONE, PMSET_NONE]), env: ENV, platform: 'darwin' });
+  assert.equal(await src.poll(), null);
+  assert.equal(await src.poll(), null);
+});
+
+test('macOS：放電で残量が low↔ok をまたいで battery.low / battery.ok（§7-3・判定は無改修で再利用）', async () => {
+  const src = createBattery({ run: pmsetRun([PM_DIS(60), PM_DIS(15), PM_DIS(15), PM_DIS(60)]), env: ENV, platform: 'darwin' });
+  assert.equal(await src.poll(), null);                  // prime（ok）
+  assert.deepEqual(await src.poll(), { situation: 'battery.low', ctx: { capacity: 15, charging: false } });
+  assert.equal(await src.poll(), null);                  // low→low：無変化
+  assert.deepEqual(await src.poll(), { situation: 'battery.ok', ctx: { capacity: 60, charging: false } });
+});
+
+test('macOS：充電ゲート（充電中は warn しない）＋満充電で battery.full（§7-3・pmset を Linux 語彙に正規化）', async () => {
+  // 充電 50（prime）→ 充電 8（ゲート＝安全値 100・またがない）→ 満充電（charged→Full で一度だけ full）
+  const src = createBattery({ run: pmsetRun([PM_CHG(50), PM_CHG(8), PM_FULL(100)]), env: ENV, platform: 'darwin' });
+  assert.equal(await src.poll(), null);                  // prime
+  assert.equal(await src.poll(), null);                  // 充電中の 8% は warn しない
+  assert.deepEqual(await src.poll(), { situation: 'battery.full', ctx: { capacity: 100, charging: true } });
+});
+
+test('macOS：pmset 不在/例外なら null（黙る・PE）', async () => {
+  const a = createBattery({ run: pmsetRun([null, null]), env: ENV, platform: 'darwin' });
+  assert.equal(await a.poll(), null);
+  const b = createBattery({ run: pmsetRun(['!throw']), env: ENV, platform: 'darwin' });
+  assert.equal(await b.poll(), null);
+});
