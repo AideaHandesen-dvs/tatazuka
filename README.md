@@ -211,7 +211,7 @@ cap の初期セット：`orientation` / `motion` / `camera` / `webgl`（ポイ�
 - **PE で縮退**（取れなければ黙る。佇かは他の理由で喋る）。
 - **IO を注入してテスト**（時計・fetch・コマンド実行を差し替え可能に）。
 
-この型で実装済み：①触られた（sense）②時刻帯 ③在席・連続時間 ④**天気**（Open-Meteo・キー不要、雨の降り始めや暑さ寒さ）⑤**作業監視**（ホストの入力 idle で離席/復帰、X11/Wayland）⑥**Home Assistant**（在宅/外出。connectors/ の入力役の初例）⑦**git**（監視リポの未コミット clean↔dirty ＋未 push unpushed↔pushed。soft 委譲の readonly プローブ初例＝§7-1）⑧**ディスク**（空き容量の low↔ok。`df` をしきい値で見る・readonly）⑨**メモリ**（空きメモリの low↔ok。`/proc/meminfo`・デバウンス付きしきい値）⑩**ネット**（オンライン/オフライン。`/sys/class/net`・二値）⑪**通信レート**（busy↔idle。`/proc/net/dev` の累計を差分してレート化・しきい値）⑫**バッテリー**（残量の low↔ok ＋満充電ケア。`/sys/class/power_supply`・**放電中だけ**警告するゲート付きしきい値＝ノート利用者全員に効く）⑬**温度**（hot↔ok。`/sys/class/thermal`・膝が熱い／ファンが唸る）⑭**ダウンロード完了**（`~/Downloads` の差分・**エッジ型**＝「何か来たぞ」・件数のみ）。④以降は同じ `sources` の蛇口に挿さる（behavior.js は出自を知らない）。connectors の設計は §7。
+この型で実装済み：①触られた（sense）②時刻帯 ③在席・連続時間 ④**天気**（Open-Meteo・キー不要、雨の降り始めや暑さ寒さ）⑤**作業監視**（ホストの入力 idle で離席/復帰、X11/Wayland）⑥**Home Assistant**（在宅/外出。connectors/ の入力役の初例）⑦**git**（監視リポの未コミット clean↔dirty ＋未 push unpushed↔pushed。soft 委譲の readonly プローブ初例＝§7-1）⑧**ディスク**（空き容量の low↔ok。`df` をしきい値で見る・readonly）⑨**メモリ**（空きメモリの low↔ok。`/proc/meminfo`・デバウンス付きしきい値）⑩**ネット**（オンライン/オフライン。`/sys/class/net`・二値）⑪**通信レート**（busy↔idle。`/proc/net/dev` の累計を差分してレート化・しきい値）⑫**バッテリー**（残量の low↔ok ＋満充電ケア。`/sys/class/power_supply`・**放電中だけ**警告するゲート付きしきい値＝ノート利用者全員に効く）⑬**温度**（hot↔ok。`/sys/class/thermal`・膝が熱い／ファンが唸る）⑭**ダウンロード完了**（`~/Downloads` の差分・**エッジ型**＝「何か来たぞ」・件数のみ）⑮**ゴミ箱**（溜まったら掃除を促す。件数しきい値）。④以降は同じ `sources` の蛇口に挿さる（behavior.js は出自を知らない）。connectors の設計は §7。
 
 ## 7. 仲介ハブ構想（connectors）
 

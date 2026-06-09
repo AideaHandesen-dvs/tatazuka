@@ -26,6 +26,7 @@ import { createNic } from '../connectors/nic.js';
 import { createBattery } from '../connectors/battery.js';
 import { createThermal } from '../connectors/thermal.js';
 import { createDownload } from '../connectors/download.js';
+import { createTrash } from '../connectors/trash.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -57,7 +58,9 @@ const batteryOn = !!process.env.TZ_BATTERY;
 const tempOn = !!process.env.TZ_TEMP;
 // Download プローブ（DL 完了＝エッジ型）。「何か来たぞ」。README §7-1。TZ_DOWNLOAD=1 で有効。
 const downloadOn = !!process.env.TZ_DOWNLOAD;
-const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(), createBattery(), createThermal(), createDownload()].filter(Boolean); // 将来 connector が増えたらここに足す
+// Trash プローブ（ゴミ箱の full↔ok）。掃除を促す家事ナッジ。README §7-1。TZ_TRASH=1 で有効。
+const trashOn = !!process.env.TZ_TRASH;
+const makeSources = () => [createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(), createBattery(), createThermal(), createDownload(), createTrash()].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT = path.resolve(here, '../client');
@@ -145,6 +148,7 @@ server.listen(PORT, () => {
     batteryOn && 'battery',
     tempOn && 'thermal',
     downloadOn && 'download',
+    trashOn && 'trash',
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');

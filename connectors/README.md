@@ -180,6 +180,9 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   **エッジ（出来事）型**——サンプル値でなく「新しいファイルが現れた瞬間」を一度だけ拾う（伺からしい反応）。
   プライバシーで**件数だけ**見てファイル名は乗せず、途中ファイル（`.crdownload`/`.part` 等）は確定まで数えない。
   `download.done`＋`ctx.n`。`TZ_DOWNLOAD=1` で有効化（`TZ_DOWNLOAD_DIR` で監視先変更）。
+- [trash.js](trash.js) … **ゴミ箱が溜まった full↔ok**（既定 `~/.local/share/Trash/files` の件数・§7-1）。掃除を促す
+  家事ナッジ。below=false の件数しきい値（`TZ_TRASH_MAX` 既定 100・件数なので戻し幅 20 と広め）。
+  プライバシーで件数だけ（download と同方針）。`trash.full`/`trash.ok`＋`ctx.n`。`TZ_TRASH=1` で有効化。
 - [hysteresis.js](hysteresis.js) … しきい値プローブ共有の**判定部品**（シュミットトリガ＝二閾値＋任意デバウンス）。
   純ロジック・IO なし。disk（即時）/ memory（デバウンス）/ nic（below=false）が載る。`makeThreshold({low,high,below,debounce}).feed(v)→'enter'|'exit'|null`。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
@@ -267,6 +270,8 @@ nic は below=false＋debounce=2。これで遷移型は **二値（git/HA/net�
 しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）／温度（thermal）** が揃った。battery は
 hysteresis をそのまま使いつつ、**流す値の側でゲートする**（放電中=実値・充電中=安全値）ことでブール条件を
 別レイヤを足さずに型へ畳み込んだ例。thermal は最大ゾーン＋両方向デバウンスの below=false 型。
+**ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
+nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。
 
 **しきい値ではない型・その1＝エッジ（出来事）型：[download.js](download.js)** — サンプル値を持たず、監視
 フォルダの **readdir 差分**で「新しいファイルが現れた瞬間」を一度だけ拾う。状態のまたぎでなく**離散イベント**。
