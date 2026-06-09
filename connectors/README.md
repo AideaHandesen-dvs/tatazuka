@@ -157,6 +157,8 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 
 - この設計メモ（二つの契約の所在を確定）。
 - [home-assistant.js](home-assistant.js) … **入力役の初例**（在宅/外出）。behavior.js の `sources` 配線込み。
+- [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミットの clean↔dirty・§7-1）。
+  `git status --porcelain` を readonly で読み、`git.dirty`/`git.clean` を投げる。`TZ_GIT_REPO` で有効化。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
   コピーして `read()`/`translate()` を実装すれば新しい入力 connector になる。
 - 各 `*.test.js` … `poll()` の契約（遷移検知・縮退・状態独立・認証）を固定。
@@ -169,7 +171,9 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 **まだ無い（M5 の残り）**：
 
 - **入力**：HA 以外のイベント源（MQTT・他の HA ドメイン等）。型は揃ったので足すだけ。
-- **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**次に書くコードはこれ**——protocol 不変・依存ゼロ。open-ended な delegate seam（§7-2）は要ると分かってから。
+- **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**git プローブは実装済み**（`git.js`）。
+  他のプローブ（ビルド/テスト状態・開いてるファイル・ディスク残量）は同じ型に沿って足すだけ。open-ended な
+  delegate seam（§7-2）は要ると分かってから。
 - **出力**：物理スタックチャン/OpenCLAW を v0 client として喋らせる実機側＋サーボ/LED の cap 語彙拡張（§3-2）。**要実機**。
 
 ```sh
@@ -195,6 +199,11 @@ node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ
   これが soft を「約束」でなく「構造」で守るということ（README §7-1）。
 
 新しい契約は要らない。**soft 委譲の near-term は「入力コネクタを増やす」に帰着する。**
+
+**初例：[git.js](git.js)** — 監視リポ（`TZ_GIT_REPO`）の未コミットを `git status --porcelain` で readonly に読み、
+clean↔dirty の遷移で `git.dirty`/`git.clean` を投げる（HA の home/away と同型）。`ctx.n`＝未コミット数・
+`ctx.repo`＝リポ名を LLM persona が織り込む（「foo に3件たまってるぞ」）。コマンド実行は `opts.run` 注入で
+テストし、実 git は叩かない（`git.test.js`）。これが soft を構造で守る形＝*読むのは固定の readonly 一点*。
 
 ### 7-2. 将来：open-ended な delegate seam（要るとわかってから）
 

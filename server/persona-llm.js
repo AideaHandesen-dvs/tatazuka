@@ -46,6 +46,9 @@ const LLM_SITUATIONS = {
   'work.60':        'ユーザーが1時間ぶっ通しで作業している。一息つけと促す',
   'work.120':       'ユーザーが2時間ぶっ通しで作業している。目を休めろと促す',
   'work.180':       'ユーザーが3時間ぶっ通しで作業している。さすがに休憩しろと促す',
+  // Git（connectors/git.js が未コミット状態の変化を検知。ctx.n に未コミット数・ctx.repo にリポ名）
+  'git.dirty':      '監視しているリポジトリに未コミットの変更ができた。こまめにコミットしろとそれとなく促す',
+  'git.clean':      '未コミットの変更が片付いた（コミット／退避された）。さりげなく認める',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -131,6 +134,13 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 在宅/外出（home.*）で対象の名前が分かれば添える（「おかえり、◯◯」のように呼べる）
   if (ctx && ctx.who && (situation === 'home.back' || situation === 'home.away')) {
     s += `\n相手の名前: ${ctx.who}`;
+  }
+  // Git（git.*）：未コミット数とリポ名を添える（「foo に3件たまってるぞ」のように織り込ませる）
+  if (ctx && (situation === 'git.dirty' || situation === 'git.clean')) {
+    const where = ctx.repo ? `リポジトリ「${ctx.repo}」` : 'リポジトリ';
+    s += situation === 'git.dirty'
+      ? `\n${where}に未コミットの変更が${ctx.n}件`
+      : `\n${where}の未コミットの変更が片付いた`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

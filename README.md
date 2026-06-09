@@ -25,7 +25,7 @@
 | M3 | 依存ゼロ WebSocket サーバー（[server/](server/README.md)） | ✅ |
 | M4 | 人格・イベント処理 | 🚧 ルールベース＋**LLM persona 差し替え**＋**ゴースト差し替え（5体）**＋**天気・作業監視イベント**。小型モデル特有の崩れ（照れ偏り・／run-on→尻切れ・mood漏れ）を実測で是正 |
 | 顔 | VRM アバター＋CSS フォールバック | ✅ Android 実機で確認 |
-| M5 | OpenCLAW / スタックチャン連携（[connectors/](connectors/README.md)） | 🚧 入力＝Home Assistant（在宅/外出）が稼働。出力（表示先）はこれから |
+| M5 | OpenCLAW / スタックチャン連携（[connectors/](connectors/README.md)） | 🚧 入力＝Home Assistant（在宅/外出）＋git（未コミット）が稼働。OpenClaw は「向き3×soft・ランタイム無し」で決定（§7-1）。出力（表示先）はこれから |
 
 **喋る言葉も差し替えられる** — 「何を喋るか」を LLM 生成に格上げできる（ollama / Claude API 両対応）。
 人格そのもの（ゴースト）も `characters/<名前>.txt` で丸ごと差し替えられる（伺かの ghost 文化）。
@@ -211,7 +211,7 @@ cap の初期セット：`orientation` / `motion` / `camera` / `webgl`（ポイ�
 - **PE で縮退**（取れなければ黙る。佇かは他の理由で喋る）。
 - **IO を注入してテスト**（時計・fetch・コマンド実行を差し替え可能に）。
 
-この型で実装済み：①触られた（sense）②時刻帯 ③在席・連続時間 ④**天気**（Open-Meteo・キー不要、雨の降り始めや暑さ寒さ）⑤**作業監視**（ホストの入力 idle で離席/復帰、X11/Wayland）⑥**Home Assistant**（在宅/外出。connectors/ の入力役の初例）。④以降は同じ `sources` の蛇口に挿さる（behavior.js は出自を知らない）。connectors の設計は §7。
+この型で実装済み：①触られた（sense）②時刻帯 ③在席・連続時間 ④**天気**（Open-Meteo・キー不要、雨の降り始めや暑さ寒さ）⑤**作業監視**（ホストの入力 idle で離席/復帰、X11/Wayland）⑥**Home Assistant**（在宅/外出。connectors/ の入力役の初例）⑦**git**（監視リポの未コミット clean↔dirty。soft 委譲の readonly プローブ初例＝§7-1）。④以降は同じ `sources` の蛇口に挿さる（behavior.js は出自を知らない）。connectors の設計は §7。
 
 ## 7. 仲介ハブ構想（connectors）
 
@@ -266,7 +266,7 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | PC作業監視 | 離席/復帰の idle 検知（X11/Wayland・PE・在席時間に縮退）。アクティブウィンドウは未着手 | ✅ 2026-06-09 |
 | プレゼンス | 仲介ハブ＝一度に一箇所・つつくと移動（protocol §6-1 の移動ロジック実装。退化形は `TZ_BROADCAST`） | ✅ 2026-06-09 |
 | 再会の記憶 | label ごとの最終時刻を覚え、再接続に「3分ぶりだな」（protocol §6-3） | ✅ 2026-06-09 |
-| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**が稼働＋**ハブのルーティング**（出力の土台）。残るは物理スタックチャンの実機側（要実機） |
+| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**＋**git 未コミット**（soft 委譲の readonly プローブ初例）が稼働＋**ハブのルーティング**（出力の土台）。OpenClaw 連携は**向き3×soft・ランタイム無し**で決定（§7-1）。残るは物理スタックチャンの実機側（要実機） |
 
 ---
 
