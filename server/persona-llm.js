@@ -49,6 +49,8 @@ const LLM_SITUATIONS = {
   // Git（connectors/git.js が未コミット状態の変化を検知。ctx.n に未コミット数・ctx.repo にリポ名）
   'git.dirty':      '監視しているリポジトリに未コミットの変更ができた。こまめにコミットしろとそれとなく促す',
   'git.clean':      '未コミットの変更が片付いた（コミット／退避された）。さりげなく認める',
+  'git.unpushed':   '監視リポジトリにコミット済みだが、まだ push していない変更がある。push し忘れていないかそれとなく促す',
+  'git.pushed':     'ローカルのコミットを push し終えてリモートと同期した。さりげなく認める',
   // ディスク（connectors/disk.js が空き容量のしきい値またぎを検知。ctx.freePct に空き率・ctx.freeGb に空き GB）
   'disk.low':       'ディスクの空き容量が少なくなってきた。片付けるよう促す',
   'disk.ok':        'ディスクの空き容量に余裕が戻った。さりげなく安心する',
@@ -144,6 +146,13 @@ function buildUser(situation, desc, ctx, ruleInUser) {
     s += situation === 'git.dirty'
       ? `\n${where}に未コミットの変更が${ctx.n}件`
       : `\n${where}の未コミットの変更が片付いた`;
+  }
+  // Git（未 push）：未 push のコミット数とリポ名を添える（「foo に2件、上げ忘れてるぞ」のように）
+  if (ctx && (situation === 'git.unpushed' || situation === 'git.pushed')) {
+    const where = ctx.repo ? `リポジトリ「${ctx.repo}」` : 'リポジトリ';
+    s += situation === 'git.unpushed'
+      ? `\n${where}に未 push のコミットが${ctx.ahead}件`
+      : `\n${where}のコミットを push 済み（リモートと同期）`;
   }
   // ディスク（disk.*）：空き率と空き GB を添える（「残り8%、7.6GB だぞ」のように織り込ませる）
   if (ctx && (situation === 'disk.low' || situation === 'disk.ok')) {

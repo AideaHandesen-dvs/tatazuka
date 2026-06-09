@@ -157,8 +157,8 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 
 - この設計メモ（二つの契約の所在を確定）。
 - [home-assistant.js](home-assistant.js) … **入力役の初例**（在宅/外出）。behavior.js の `sources` 配線込み。
-- [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミットの clean↔dirty・§7-1）。
-  `git status --porcelain` を readonly で読み、`git.dirty`/`git.clean` を投げる。`TZ_GIT_REPO` で有効化。
+- [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
+  `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
   空き率が `TZ_DISK_MIN_PCT`（既定 10）を割ると `disk.low`、回復で `disk.ok`。`TZ_DISK_PATH` で有効化。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
@@ -203,10 +203,12 @@ node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ
 
 新しい契約は要らない。**soft 委譲の near-term は「入力コネクタを増やす」に帰着する。**
 
-**初例：[git.js](git.js)** — 監視リポ（`TZ_GIT_REPO`）の未コミットを `git status --porcelain` で readonly に読み、
-clean↔dirty の遷移で `git.dirty`/`git.clean` を投げる（HA の home/away と同型）。`ctx.n`＝未コミット数・
-`ctx.repo`＝リポ名を LLM persona が織り込む（「foo に3件たまってるぞ」）。コマンド実行は `opts.run` 注入で
-テストし、実 git は叩かない（`git.test.js`）。これが soft を構造で守る形＝*読むのは固定の readonly 一点*。
+**初例：[git.js](git.js)** — 監視リポ（`TZ_GIT_REPO`）を `git status --porcelain=v2 --branch` で readonly に読み、
+**二つの独立した二値遷移**を投げる：未コミットの clean↔dirty（`git.dirty`/`git.clean`）と、未 push の
+ahead↔同期（`git.unpushed`/`git.pushed`、`# branch.ab` から ahead を読む・upstream 無しは催促しない）。
+`ctx.n`＝未コミット数・`ctx.ahead`＝未 push 数・`ctx.repo`＝リポ名を LLM persona が織り込む。コミットは
+clean と unpushed を同時に起こすので、clean を先に返し unpushed を次の poll に繰り越す（1 poll に 1 遷移）。
+コマンド実行は `opts.run` 注入でテストし、実 git は叩かない（`git.test.js`）。soft を構造で守る＝*読むのは固定の readonly 一点*。
 
 **しきい値型：[disk.js](disk.js)** — git が二値遷移なのに対し、こちらは `df` の空き率が `TZ_DISK_MIN_PCT`
 （既定 10）を割ったかで `disk.low`/`disk.ok`（weather・work.N と同じしきい値またぎ）。同じイベント源
