@@ -38,6 +38,13 @@ test('TZ_CHARACTER=imouto は妹ゴーストを読む', () => {
   assert.match(c, /おにいちゃん/);
 });
 
+test('TZ_CHARACTER=shiki は式神ゴーストを読む（無機質・ワタシ/きみ）', () => {
+  const c = loadCharacter({ TZ_CHARACTER: 'shiki' });
+  assert.match(c, /ワタシ/);
+  assert.match(c, /きみ/);
+  assert.doesNotMatch(c, /一人称：俺/, '佇かの設定が混ざっていない');
+});
+
 test('未知の名前は組み込みの佇か(DEFAULT_CHARACTER)へフォールバック', () => {
   assert.equal(loadCharacter({ TZ_CHARACTER: 'no_such_ghost' }), DEFAULT_CHARACTER);
 });
