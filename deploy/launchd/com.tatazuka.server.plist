@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  佇か（tatazuka）LaunchAgent テンプレート（macOS）。
+  設置手順は deploy/README.md を参照。__REPO__ / __HOME__ を実パスに置換して
+  ~/Library/LaunchAgents/com.tatazuka.server.plist に置く（sed で展開する）。
+
+    sed -e "s|__REPO__|$HOME/tatazuka|g" -e "s|__HOME__|$HOME|g" \
+      ~/tatazuka/deploy/launchd/com.tatazuka.server.plist \
+      > ~/Library/LaunchAgents/com.tatazuka.server.plist
+
+  LaunchAgent＝per-user・ログイン時起動（systemd --user の対）。秘密は plist でなく
+  ~/.config/tatazuka/tatazuka.env へ（ラッパー tatazuka-launch.sh が読む）。
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tatazuka.server</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/deploy/launchd/tatazuka-launch.sh</string>
+  </array>
+
+  <!-- ログイン時に起動（systemd の enable + default.target に相当） -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- 落ちても起こし直す（systemd Restart に相当）。ThrottleInterval で連続再起動を抑える（StartLimit 相当） -->
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>3</integer>
+
+  <!-- ログは ~/Library/Logs/tatazuka.log（systemd の journal に相当） -->
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/tatazuka.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/tatazuka.log</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

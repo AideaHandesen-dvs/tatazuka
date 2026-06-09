@@ -9,7 +9,7 @@
 | OS | 仕組み | 状態 |
 |---|---|---|
 | Linux | systemd **user** サービス（`systemd/tatazuka.service`） | ✅ landed（2026-06-09・実機 Linux で動作確認） |
-| macOS | launchd（LaunchAgent plist） | ⬜ これから |
+| macOS | launchd（LaunchAgent・`launchd/com.tatazuka.server.plist`） | ✅ landed（2026-06-09・osx-kvm Catalina で動作確認） |
 | Windows | Task Scheduler（ログオン時タスク） | ⬜ これから |
 
 設計上の約束（共通）：
@@ -63,7 +63,58 @@ systemctl --user disable --now tatazuka      # 停止＋自動起動オフ
 - **天気/Home Assistant が network を要する**が、無くても PE で黙るだけ。だから unit は network を
   必須依存にせず `After=network.target` の順序付けだけ与えている。
 
-## macOS / Windows
+## macOS（launchd LaunchAgent）
 
-これから（上表）。OS 別バックエンド（§7-3）の検証に使った VM ラボ（osx-kvm / tiny10）でそのまま実地確認する。
-plist / スケジュールタスクも「秘密は env へ・無くても起動」の同じ約束で書く。
+`launchctl` だけで完結する（root 不要）。LaunchAgent は **per-user・ログイン時起動**＝systemd `--user` の対。
+plist は `~` も EnvironmentFile も展開しないので、起動を**ラッパー** `launchd/tatazuka-launch.sh` に一段噛ませ、
+そこで env を外出し読み込み・node を解決する（「秘密は env へ・無くても起動」を移植）。
+
+```sh
+# 0) 前提：~/tatazuka に repo・node・証明書（server/certs/）が揃っている
+#    - node は Homebrew でも prebuilt tarball でも可。tarball なら ~/opt/node を実体へ symlink:
+#        ln -sfn ~/opt/node-vXX.X.X-darwin-x64 ~/opt/node
+#      （ラッパーが PATH に ~/opt/node/bin を足す。macOS 10.15 Catalina は node 18 系が上限）
+#    - 証明書：mkcert でも openssl でも可（HTTPS 終端に必須）:
+#        openssl req -x509 -newkey rsa:2048 -nodes -days 365 -subj "/CN=localhost" \
+#          -keyout ~/tatazuka/server/certs/key.pem -out ~/tatazuka/server/certs/cert.pem
+
+# 1) env（要るものだけ。空でもルールベースで起動する）
+mkdir -p ~/.config/tatazuka
+cp ~/tatazuka/deploy/systemd/tatazuka.env.example ~/.config/tatazuka/tatazuka.env
+chmod 600 ~/.config/tatazuka/tatazuka.env
+$EDITOR ~/.config/tatazuka/tatazuka.env
+
+# 2) plist を実パスに展開して設置（__REPO__ / __HOME__ を置換）
+mkdir -p ~/Library/LaunchAgents
+sed -e "s|__REPO__|$HOME/tatazuka|g" -e "s|__HOME__|$HOME|g" \
+  ~/tatazuka/deploy/launchd/com.tatazuka.server.plist \
+  > ~/Library/LaunchAgents/com.tatazuka.server.plist
+
+# 3) 読み込み＋起動（Catalina 以降の bootstrap 形）
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.tatazuka.server.plist
+#   旧形なら: launchctl load -w ~/Library/LaunchAgents/com.tatazuka.server.plist
+
+# 4) 確認
+launchctl print gui/$(id -u)/com.tatazuka.server | head        # 状態（PID / KeepAlive 等）
+curl -sk -o /dev/null -w "%{http_code}\n" https://localhost:8443/
+tail -f ~/Library/Logs/tatazuka.log                            # 起動ログ
+```
+
+運用：
+
+```sh
+launchctl kickstart -k gui/$(id -u)/com.tatazuka.server        # 設定変更を反映（再起動）
+launchctl bootout gui/$(id -u)/com.tatazuka.server             # 停止＋自動起動オフ
+#   旧形なら: launchctl unload -w ~/Library/LaunchAgents/com.tatazuka.server.plist
+```
+
+- **node の場所**はラッパーが `~/opt/node/bin:/usr/local/bin:/opt/homebrew/bin` を PATH に足して探す。
+  別の場所なら `tatazuka-launch.sh` を直すか symlink を張る。
+- **証明書が無い**と serve.js は起動時に落ちる（HTTPS 終端なので必須）。`~/Library/Logs/tatazuka.log` に出る。
+- LaunchAgent はログイン時に起動するので、**自動ログインを切っている mac では手動ログインまで佇かは出ない**
+  （システム全体の起動時に出したいなら LaunchDaemon だが、per-user の佇かには LaunchAgent が素直）。
+
+## Windows
+
+これから（上表）。OS 別バックエンド（§7-3）の検証に使った VM ラボ（tiny10）でそのまま実地確認する。
+Task Scheduler のタスクも「秘密は env へ・無くても起動」の同じ約束で書く。
