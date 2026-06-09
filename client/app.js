@@ -188,6 +188,14 @@ tatazuka.addEventListener('mousedown', (e) => gestureStart(e.target, e.clientX, 
 addEventListener('mousemove', (e) => { if (p) gestureMove(e.clientX, e.clientY); });
 addEventListener('mouseup', gestureEnd);
 
+// 空き部屋（presence:false）は「ノック」できる：誰も居ない箱をつつくと、佇かが居る部屋から
+// こっちへ移ってくる（§6-1 の移動を client から起こす蛇口）。away 時は #tatazuka が
+// pointer-events:none なので、タップは下の #scene に届く＝ここで拾って sense を投げる。
+// 在室中（lastHere）は #tatazuka 側のジェスチャが処理するので、ここは空振りさせる。
+function knock() { if (!lastHere) sense('つつく'); }
+scene.addEventListener('touchend', knock);
+scene.addEventListener('mousedown', knock);
+
 // ---- HUD（プロト用デバッグ表示）----
 let lastIn = '-', lastOut = '-';
 function renderHud() {
