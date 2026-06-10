@@ -10,7 +10,7 @@
 |---|---|---|
 | Linux | systemd **user** サービス（`systemd/tatazuka.service`） | ✅ landed（2026-06-09・実機 Linux で動作確認） |
 | macOS | launchd（LaunchAgent・`launchd/com.tatazuka.server.plist`） | ✅ landed（2026-06-09・osx-kvm Catalina で動作確認） |
-| Windows | Task Scheduler（ログオン時タスク・`windows/tatazuka.xml` ＋ラッパー `windows/tatazuka-launch.ps1`） | 🟡 **構造は実機 tiny10 で実証**（2026-06-10・PS5.1 parse／schtasks UTF-16 登録／ログオン+LeastPrivilege／RUN→fail-soft 127＋ログ）。**node happy-path（HTTPS 200・crash 復活）のみ未**＝ラボに node 不在 |
+| Windows | Task Scheduler（ログオン+時刻トリガ・`windows/tatazuka.xml` ＋ラッパー `windows/tatazuka-launch.ps1`） | ✅ **landed**（2026-06-10・実機 tiny10／Win10・PS5.1・node20 で全 e2e 実証：自走起動→HTTPS 200→**クラッシュ→別PIDで自動復活**＋node不在 fail-soft 127） |
 
 上表の「landed」は**自動起動ユニットが効くこと**を指す。**インストーラとは別**。次節で分ける。
 
@@ -20,7 +20,7 @@
 
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
-| **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ Linux＋macOS landed・Windows は構造を実機実証済（node happy-path のみ未／上表） |
+| **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ **Linux＋macOS＋Windows 全 landed**（各実機で起動＋クラッシュ自動復活を実証／上表） |
 | **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | ⬜ まだ。今は手順を**手で**踏む |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
@@ -214,21 +214,31 @@ schtasks /Delete /TN tatazuka /F                          # 停止＋自動起�
   BOM 無しの非 ASCII スクリプトを ANSI コードページで誤読し、日本語 Windows（CP932）では日本語の直後の
   `}` を食ってパースが壊れる（実機で確認）。BOM があれば UTF-8 と確定して読む。
 - **証明書が無い**と serve.js は起動時に落ちる（HTTPS 終端なので必須）。`%USERPROFILE%\.config\tatazuka\tatazuka.log` に出る。
-- 落ちても **1 分間隔で最大 5 回**起こし直す（XML の `RestartOnFailure`）。クリーン終了（0）では再起動しない＝
-  systemd `Restart=on-failure` と同じ振る舞い。ただし **Task Scheduler の最小間隔は 1 分**（PT1M）で、
-  systemd の `RestartSec=3`（秒単位）のような細かさは持てない＝Windows は再起動粒度が粗い。
+- 落ちても起こし直す＝**LogonTrigger の Repetition（1 分ごと）＋ `MultipleInstancesPolicy=IgnoreNew`**。
+  生存中は新規起動が無視され、死んでいれば 1 分以内に立ち上げ直す（Task Scheduler の枯れた keep-alive 定石）。
+  systemd `Restart=on-failure` / launchd `KeepAlive` の役。**`RestartOnFailure` は使っていない**——プロセスの
+  異常終了で確実に発火しなかった（実機 tiny10 で確認・kill 後 110 秒待っても復活せず）。復活レイテンシは最大 1 分
+  ＝Windows は粒度が粗く、systemd の `RestartSec=3`（秒単位）のような細かさは持てない。
 - ログオン時起動なので、**自動ログオンを切っている PC では手動ログオンまで佇かは出ない**
   （ログオン前から出したいならサービス化＝別物。per-user の佇かにはログオン時タスクが素直）。
 
-> **実機検証：構造は通った／node happy-path だけ残る（2026-06-10）。** OS 別バックエンド検証に使った
-> VM ラボ（tiny10・Win10 / PS5.1）は**最小構成で node/OpenSSH 不在**（§7-3・操作は SPICE コンソールから
-> `irm <host>/p.ps1 | iex` の HTTP-POST 経路）。この経路で次を**実機実証**した：①ラッパーが実 PS5.1 で
-> parse 通る ②タスク XML を実 schtasks が受理して登録できる ③登録定義がログオントリガ・LeastPrivilege
-> （管理者不要）・`RestartOnFailure PT1M×5`・Hidden で正しい ④`schtasks /Run` でラッパーが発火し、env 読み込み・
-> node 探索を経て **exit 127 で fail-soft しログに理由を残す**。残るのは node を入れた実機での **happy-path**
-> （serve.js→HTTPS 200・実クラッシュ→自動復活）だけ＝そこは Linux/macOS の landed と同形。
+> **実機検証：全 e2e landed（2026-06-10）。** OS 別バックエンド検証に使った VM ラボ（tiny10・Win10 /
+> PS5.1）で、node20 を入れて佇か本体まで通し、次を**実機実証**した：①ラッパーが実 PS5.1 で parse 通る
+> ②タスク XML を実 schtasks が受理して登録できる ③登録定義がトリガ（ログオン＋時刻）・LeastPrivilege
+> （管理者不要）・Hidden で正しい ④**TimeTrigger が自走して serve.js を起こし HTTPS 200**（node クライアントで
+> 2350B）⑤**node を kill→1 分以内に別 PID で自動復活し再び 200**（keep-alive 蘇生）⑥node 不在時は
+> **exit 127 で fail-soft しログに理由を残す**。Linux/macOS の landed（起動＋クラッシュ復活）と同等。
 >
-> この検証で実機しか炙り出せないバグを 5 件捕って直した（テンプレ初版にあった）：`${env:ProgramFiles(x86)}`
-> が PS5.1 パーサを壊す／BOM 無し UTF-8 を日本語 Windows が誤読し `}` を食う（→ BOM 付与）／schtasks は
-> UTF-8 を蹴り UTF-16 を要る／`Interval` 最小は 1 分で `PT3S` は範囲外／`Write-Error`(Stop) が `exit 127` を
-> 食い診断が Hidden で消える（→ ログ先出し）。ローカルの構文チェックでは一つも見えなかった。
+> この検証で**実機しか炙り出せないバグを 6 件**捕って直した（テンプレ初版にあった。ローカルの xmllint /
+> 構文チェックでは一つも見えなかった）：(1) `${env:ProgramFiles(x86)}` が PS5.1 パーサを壊す → GetEnvironmentVariable。
+> (2) BOM 無し UTF-8 を日本語 Windows（CP932）が誤読し `}` を食う → wrapper を UTF-8 BOM 付きに。
+> (3) schtasks /XML は UTF-8 を蹴る（`unable to switch the encoding`）→ UTF-16 化。
+> (4) `Interval` 最小 1 分で `PT3S` は範囲外 → 以下(6)で別機構へ。
+> (5) `Write-Error`(Stop) が `exit 127` に届かず診断も Hidden で消える → ログ先出し＋`Out-File`。
+> (6) **`RestartOnFailure` はプロセス異常終了で発火しない**（kill 後 110 秒待っても復活せず）→ 撤去し、
+> **LogonTrigger＋時刻 TimeTrigger（1 分ごと無限 repetition）＋IgnoreNew** の keep-alive に置換。
+> ＊LogonTrigger に repetition を付けても効かない（ログオン後に登録した同一 session では発火しない）ため、
+> 時刻起点の TimeTrigger を別に立てている。復活レイテンシは最大 1 分＝Windows は再起動粒度が粗い。
+>
+> （`.NET`(PS5.1) の `Invoke-WebRequest` は node20 の TLS と噛み合わず接続できないが、これはクライアント側の
+> 癖で serve.js の問題ではない＝node クライアントと実ブラウザ＝スマホ側は 200。検証は node クライアントで取った。）

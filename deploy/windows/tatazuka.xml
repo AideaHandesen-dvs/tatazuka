@@ -21,12 +21,28 @@
     <URI>\tatazuka</URI>
   </RegistrationInfo>
 
-  <!-- ログイン時に起動（systemd default.target / launchd RunAtLoad に相当） -->
+  <!-- 二段構え。LogonTrigger＝ログオン時に即起動（systemd default.target / launchd RunAtLoad の対）。
+       TimeTrigger＝過去起点の 1 分ごと無限 repetition で、クラッシュ復活の主機構を担う：
+       生存中は下の MultipleInstancesPolicy=IgnoreNew で無視され、死んでいれば 1 分以内に起こし直す
+       ＝Task Scheduler の枯れた keep-alive 定石。InteractiveToken なのでログオン中だけ鳴る（ログアウト中は
+       佇かも要らない）。
+       ※ LogonTrigger に repetition を付けても効かない：repetition はログオンイベントに紐付くため、
+         ログオン後に登録した同一 session では発火しない（実機 tiny10 で確認）。だから時刻起点の
+         TimeTrigger を別に立てる。RestartOnFailure はプロセス異常終了で確実に発火しないので使わない（同上）。
+         復活レイテンシは最大 1 分＝Windows は粒度が粗い。 -->
   <Triggers>
     <LogonTrigger>
       <Enabled>true</Enabled>
       <UserId>__USER__</UserId>
     </LogonTrigger>
+    <TimeTrigger>
+      <Enabled>true</Enabled>
+      <StartBoundary>2020-01-01T00:00:00</StartBoundary>
+      <Repetition>
+        <Interval>PT1M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
   </Triggers>
 
   <!-- ユーザー権限だけで動かす（root/管理者不要＝systemd user サービス / LaunchAgent と同じ） -->
@@ -61,14 +77,8 @@
     <!-- 常駐サーバなので実行時間に上限を設けない（PT0S＝無制限） -->
     <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
     <Priority>7</Priority>
-    <!-- 落ちても起こし直す：1 分間隔で最大 5 回（systemd Restart=on-failure + StartLimitBurst=5 /
-         launchd KeepAlive の対）。クリーン終了(0)では再起動しない。
-         ※ Task Scheduler の Interval は最小 1 分（PT1M）＝systemd の RestartSec=3 のような秒単位は
-           範囲外で弾かれる（実機 schtasks で確認）。Windows は再起動粒度が粗い。 -->
-    <RestartOnFailure>
-      <Interval>PT1M</Interval>
-      <Count>5</Count>
-    </RestartOnFailure>
+    <!-- クラッシュ復活は上の LogonTrigger の Repetition（1 分ごと＋IgnoreNew）で担う。
+         RestartOnFailure はプロセス異常終了で確実に発火しなかったため使わない（実機 tiny10 で確認）。 -->
   </Settings>
 
   <Actions Context="Author">
