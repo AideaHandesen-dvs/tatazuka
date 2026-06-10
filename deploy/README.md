@@ -21,7 +21,7 @@
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
 | **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ **Linux＋macOS＋Windows 全 landed**（各実機で起動＋クラッシュ自動復活を実証／上表） |
-| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟡 **計画確定**（ワンライナー導入＝署名の壁を回避・下節）。実装は Linux `install.sh` 先行でこれから。今はまだ手順を手で踏む |
+| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟡 計画確定＋**Linux `install.sh` landed**（2026-06-10・クリーン実機で一発導入→HTTPS 200・冪等・`--uninstall`／下節）。macOS/Windows の installer はこれから |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
 ②の前提——node を入れる・repo を持ってくる・HTTPS 証明書を作る——は、各 OS 節の「前提」に手順として
@@ -53,8 +53,8 @@ prebuilt tarball で置き・repo を rsync で送り・証明書を openssl で
 登録して起動する」だけに絞れている。
 
 ```
-Linux/macOS :  curl -fsSL https://raw.githubusercontent.com/AideaHandesen-dvs/tatazuka/main/install.sh | bash
-Windows     :  irm https://raw.githubusercontent.com/AideaHandesen-dvs/tatazuka/main/install.ps1 | iex
+Linux/macOS :  curl -fsSL https://raw.githubusercontent.com/AideaHandesen-dvs/tatazuka/main/deploy/install.sh | bash
+Windows     :  irm https://raw.githubusercontent.com/AideaHandesen-dvs/tatazuka/main/deploy/install.ps1 | iex
 ```
 
 各スクリプトの骨は同じ：**node を用意 → repo 取得 → 証明書を作る → 自動起動ユニットを登録（①）→ 起動**。
@@ -95,9 +95,12 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
 
 ### 実装順（①と同じ Linux 先行）
 
-1. **Linux `install.sh`**（署名の壁が無い＝型を最速で立てられる。証明書サブ問題もここで解く）。
-2. macOS（同じ `install.sh` に launchd 分岐を足す。Gatekeeper 不要をこの形で実証）。
-3. Windows `install.ps1`（ラボの `irm|iex` 経路がそのまま本番の導線。FW 開放に admin 一回）。
+1. **Linux `install.sh`** ✅ **landed**（2026-06-10・クリーン実機 vindalfr で実証：node 不在→prebuilt 取得→
+   `git clone`→openssl 自己署名→systemd user ユニット登録→**HTTPS 200**。冪等＝再実行で node 再利用・証明書
+   保持・再起動。`--uninstall`/`--mkcert`/`--port`/`--branch` 付き）。証明書サブ問題は openssl（無印）と
+   `--mkcert` まで実装、`--tailscale` は近日。
+2. macOS（同じ `install.sh` に launchd 分岐を足す。Gatekeeper 不要をこの形で実証）＝これから。
+3. Windows `install.ps1`（ラボの `irm|iex` 経路がそのまま本番の導線。FW 開放に admin 一回）＝これから。
 
 ---
 
