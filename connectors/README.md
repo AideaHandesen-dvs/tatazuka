@@ -196,9 +196,19 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   `TZ_AWAY_DWELL_S`（既定 900s＝15 分）続いたら **一度だけ**「誰もいないのに食ってるぞ＝消し忘れ」。帰宅 or 電力低下で解消＝再武装。
   dwell が「ちょっと出ただけ」「レンジの一瞬」を自然に弾く（デバウンス不要）。`ctx.watts`/`ctx.awayMin`。**在席(TZ_HASS_PERSON)と
   電力(TZ_HASS_POWER)の両方が揃った人にだけ自然に生える**（追加 env ゼロ）＝既存二源の組合せで新しい観察を作る合成の本領。
+- [mqtttemp.js](mqtttemp.js) … **MQTT の温度 topic で室温の快適帯**（`roomtemp.cold`/`roomtemp.hot`/`roomtemp.ok`）＝**非 HA 入力源の初例**。
+  観察は roomtemp と同じ（寒い/暑い/快適）だが、値の出どころが HA REST でなく **MQTT ブローカー直結**。＝**MQTT は「新しい観察型」ではなく
+  既存型の「別トランスポート」**という割り切り：判定（makeBand）・persona（roomtemp.* 再利用）・ctx（tempC）は丸ごと共有し、違うのは
+  `mqtt.js` の `read`＋`pick` で値を取る一点だけ。`TZ_MQTT_TEMP`（topic）＋任意 `TZ_MQTT_TEMP_PATH`（生値/JSON フィールド）＋快適帯は roomtemp と共有。
+  HA を立てていない人でも Mosquitto に喋る安物センサ（Tasmota/ESPHome/Zigbee2MQTT…）で佇かが反応する＝到達面を Linux×git の外へ広げる一歩。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
   humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）・motion（人感）・power（電力）が
   分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。awaypower は**二本**作って合成する。
+- [mqtt.js](mqtt.js) … **MQTT 3.1.1（QoS 0）の最小クライアント＋共有リーダ**＝ha.js の**非 HA 版**（トランスポートを一点に寄せる）。
+  `net.Socket` 上に CONNECT/SUBSCRIBE/PUBLISH/PINGREQ だけ自前ワイヤ（ws.js の「割り切ったプロトコル手書き」精神・依存ゼロ）。
+  受けた PUBLISH の最新値を topic ごとに buffer し `read(topic)` で返す＝**push→pull 変換**で behavior.js の sources（poll）契約を変えない。
+  socket は opts.connect で注入（実ブローカー不要でテスト）／切断は自動再接続＋keepalive。`pick(payload, path)` で payload のセンサ差（生値/JSON/ネスト）を吸収。
+  **serve.js が一本だけ作って全セッションに配る**（トランスポート共有・判定状態は接続ごと独立）。`TZ_MQTT_URL`（＋任意 user/pass）。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -247,7 +257,8 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 
 **まだ無い（M5 の残り）**：
 
-- **入力**：HA 以外のイベント源（MQTT・他の HA ドメイン等）。型は揃ったので足すだけ。
+- **入力**：HA 以外のイベント源——**MQTT は初着地済み**（[mqtt.js](mqtt.js) 共有トランスポート＋[mqtttemp.js](mqtttemp.js)）＝「既存型の別トランスポート」
+  という割り切りで判定/persona を再利用。残りは MQTT の他センサ（湿度/電力を同じ要領で roomtemp 流に増やす）・他の HA ドメイン等。型は揃ったので足すだけ。
 - **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**git（二値）・ディスク（しきい値）は実装済み**
   （`git.js` / `disk.js`）。他（ビルド/テスト状態 等）は同じ型に沿って足すだけ。「開いてるファイル」はアクティブ
   ウィンドウ依存で Wayland 不可・プライバシーのため見ない（activity.js と同方針）。open-ended な delegate

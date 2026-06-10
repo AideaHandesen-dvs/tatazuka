@@ -26,6 +26,8 @@ import { createOpening } from '../connectors/opening.js';
 import { createMotion } from '../connectors/motion.js';
 import { createPower } from '../connectors/power.js';
 import { createAwayPower } from '../connectors/awaypower.js';
+import { makeMqttClient } from '../connectors/mqtt.js';
+import { createMqttTemp } from '../connectors/mqtttemp.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
@@ -72,6 +74,11 @@ const powerOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && proce
 // AwayPower（留守 × 高電力の継続＝消し忘れ）。在席(person)と電力(power)の二源を時計で合成＝合成型の二例目。
 // 在席と電力の両方が揃った人にだけ自然に生える（追加 env ゼロ・閾値/滞留は TZ_AWAY_HIGH/TZ_AWAY_DWELL_S で）。
 const awayPowerOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_PERSON && process.env.TZ_HASS_POWER);
+// MQTT（非 HA 入力源）。TZ_MQTT_URL があればブローカーへ一本だけ接続する**共有クライアント**を作り、全セッションに配る
+// （トランスポートは共有・各コネクタの判定状態は接続ごと独立）。無ければ null＝MQTT に触れない（PE）。
+const mqtt = process.env.TZ_MQTT_URL ? makeMqttClient() : null;
+// MqttTemp（MQTT の温度 topic＝室温の快適帯）。roomtemp と同じ観察の別トランスポート（同じ situation を再利用）。
+const mqttTempOn = !!(mqtt && process.env.TZ_MQTT_TEMP);
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
@@ -98,6 +105,7 @@ const uptimeOn = !!process.env.TZ_UPTIME;
 const makeSources = () => [
   createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createIlluminance(), createOpening(),
   createMotion(), createPower(), createAwayPower(),
+  createMqttTemp({ client: mqtt }), // 非 HA 入力源（共有 MQTT クライアントを注入・band は接続ごと独立）
   createGit(), createDisk(), createMemory(), createNet(), createNic(),
   createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
@@ -188,6 +196,7 @@ server.listen(PORT, () => {
     motionOn && `motion（${process.env.TZ_HASS_MOTION}）`,
     powerOn && `power（${process.env.TZ_HASS_POWER}）`,
     awayPowerOn && `awaypower（留守×電力＝消し忘れ）`,
+    mqttTempOn && `mqtttemp（MQTT ${process.env.TZ_MQTT_TEMP}→室温）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',
