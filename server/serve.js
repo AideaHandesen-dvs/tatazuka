@@ -28,6 +28,7 @@ import { createPower } from '../connectors/power.js';
 import { createAwayPower } from '../connectors/awaypower.js';
 import { makeMqttClient } from '../connectors/mqtt.js';
 import { createMqttTemp } from '../connectors/mqtttemp.js';
+import { createMqttPower } from '../connectors/mqttpower.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
@@ -79,6 +80,8 @@ const awayPowerOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && p
 const mqtt = process.env.TZ_MQTT_URL ? makeMqttClient() : null;
 // MqttTemp（MQTT の温度 topic＝室温の快適帯）。roomtemp と同じ観察の別トランスポート（同じ situation を再利用）。
 const mqttTempOn = !!(mqtt && process.env.TZ_MQTT_TEMP);
+// MqttPower（MQTT の電力 topic＝消費電力の high↔ok）。power と同じ観察の別トランスポート（同じ situation を再利用・片側しきい値）。
+const mqttPowerOn = !!(mqtt && process.env.TZ_MQTT_POWER);
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
@@ -106,6 +109,7 @@ const makeSources = () => [
   createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createIlluminance(), createOpening(),
   createMotion(), createPower(), createAwayPower(),
   createMqttTemp({ client: mqtt }), // 非 HA 入力源（共有 MQTT クライアントを注入・band は接続ごと独立）
+  createMqttPower({ client: mqtt }), // 非 HA 入力源・二例目（同じ共有クライアント・しきい値は接続ごと独立）
   createGit(), createDisk(), createMemory(), createNet(), createNic(),
   createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
@@ -197,6 +201,7 @@ server.listen(PORT, () => {
     powerOn && `power（${process.env.TZ_HASS_POWER}）`,
     awayPowerOn && `awaypower（留守×電力＝消し忘れ）`,
     mqttTempOn && `mqtttemp（MQTT ${process.env.TZ_MQTT_TEMP}→室温）`,
+    mqttPowerOn && `mqttpower（MQTT ${process.env.TZ_MQTT_POWER}→電力）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',

@@ -201,6 +201,13 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   既存型の「別トランスポート」**という割り切り：判定（makeBand）・persona（roomtemp.* 再利用）・ctx（tempC）は丸ごと共有し、違うのは
   `mqtt.js` の `read`＋`pick` で値を取る一点だけ。`TZ_MQTT_TEMP`（topic）＋任意 `TZ_MQTT_TEMP_PATH`（生値/JSON フィールド）＋快適帯は roomtemp と共有。
   HA を立てていない人でも Mosquitto に喋る安物センサ（Tasmota/ESPHome/Zigbee2MQTT…）で佇かが反応する＝到達面を Linux×git の外へ広げる一歩。
+- [mqttpower.js](mqttpower.js) … **MQTT の電力 topic で消費電力の high↔ok**（`power.high`/`power.ok`）＝**非 HA 入力源の二例目**。
+  観察は power と同じ（結構使ってる/落ち着いた）だが、値の出どころが HA REST でなく **MQTT ブローカー直結**。mqtttemp（温度）に続く
+  「既存型の別トランスポート」の二本目で、**今度は判定型が違う**のが肝：mqtttemp が**両側帯（makeBand）**を運んだのに対し、
+  こちらは **片側しきい値（makeThreshold・below=false）**＝MQTT トランスポートが「判定型に依らない単なる運び屋」だと別の型で実証。
+  判定（makeThreshold）・persona（power.* 再利用）・ctx（watts）は丸ごと power と共有し、違うのは `mqtt.js` の `read`＋`pick` の一点だけ。
+  `TZ_MQTT_POWER`（topic）＋任意 `TZ_MQTT_POWER_PATH`（生値/JSON フィールド・**Tasmota スマートプラグは `ENERGY.Power`**）＋閾値は power と共有（`TZ_POWER_HIGH` 既定 500W）。
+  安物スマートプラグ（Tasmota/Shelly…）が MQTT で吐く電力をそのまま拾える＝`mqtt.js` の `pick` コメントが例に挙げた `ENERGY.Power` が現実の配線になる。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
   humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）・motion（人感）・power（電力）が
   分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。awaypower は**二本**作って合成する。
@@ -257,8 +264,8 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 
 **まだ無い（M5 の残り）**：
 
-- **入力**：HA 以外のイベント源——**MQTT は初着地済み**（[mqtt.js](mqtt.js) 共有トランスポート＋[mqtttemp.js](mqtttemp.js)）＝「既存型の別トランスポート」
-  という割り切りで判定/persona を再利用。残りは MQTT の他センサ（湿度/電力を同じ要領で roomtemp 流に増やす）・他の HA ドメイン等。型は揃ったので足すだけ。
+- **入力**：HA 以外のイベント源——**MQTT は温度・電力の二本が着地済み**（[mqtt.js](mqtt.js) 共有トランスポート＋[mqtttemp.js](mqtttemp.js) 両側帯＋[mqttpower.js](mqttpower.js) 片側しきい値）
+  ＝「既存型の別トランスポート」という割り切りで判定/persona を再利用し、**判定型が違っても同じトランスポートに乗る**ことまで実証済み。残りは MQTT の他センサ（湿度を humidity 流に等）・他の HA ドメイン等。型は揃ったので足すだけ。
 - **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**git（二値）・ディスク（しきい値）は実装済み**
   （`git.js` / `disk.js`）。他（ビルド/テスト状態 等）は同じ型に沿って足すだけ。「開いてるファイル」はアクティブ
   ウィンドウ依存で Wayland 不可・プライバシーのため見ない（activity.js と同方針）。open-ended な delegate
