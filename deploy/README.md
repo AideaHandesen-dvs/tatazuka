@@ -21,7 +21,7 @@
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
 | **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ **Linux＋macOS＋Windows 全 landed**（各実機で起動＋クラッシュ自動復活を実証／上表） |
-| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟡 計画確定＋**`install.sh` が Linux＋macOS landed**（2026-06-10・各実機で一発導入→HTTPS 200・冪等・`--uninstall`／下節）。Windows `install.ps1` と `--tailscale` がこれから |
+| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟢 **三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall。署名不要を実証）。残るは証明書の `--tailscale`（警告ゼロ化）と実機スマホでの信頼テスト（下節） |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
 ②の前提——node を入れる・repo を持ってくる・HTTPS 証明書を作る——は、各 OS 節の「前提」に手順として
@@ -103,7 +103,12 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
    node18 reuse→**LibreSSL 2.8.3 で config 方式 SAN 証明書**（`-addext` 非対応を回避）→launchd bootstrap→
    **HTTPS 200**→bootout。Gatekeeper は `curl|bash` 経由で一切出ず＝**$99 不要を実証**）。自己署名は iOS の
    398 日上限に合わせ **397 日**。
-3. Windows `install.ps1`（ラボの `irm|iex` 経路がそのまま本番の導線。FW 開放に admin 一回）＝これから。
+3. **Windows `install.ps1`** ✅ **landed**（2026-06-10・実機 tiny10/Win10/PS5.1 で実証：node→repo→
+   **mkcert で証明書**→Task Scheduler 登録（`<UserId>` は現ユーザーの **SID 直**で WORKGROUP\… 解決失敗を回避）→
+   `schtasks /Run`→**HTTPS 200**（node クライアント）→`-Uninstall`。FW 開放は admin 時のみ・無ければ localhost）。
+   `irm|iex` 経由なら SmartScreen も出ない＝**署名不要を実証**。
+
+残りは **`--tailscale`**（証明書のボス＝見る端末で警告ゼロにする本物の Let's Encrypt パス）。
 
 ---
 
