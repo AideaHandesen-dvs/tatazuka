@@ -187,6 +187,11 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   ファイルも /sys も読まず、poll が呼ばれる実時計間隔を測るだけ。`TZ_RESUME_GAP_S`（既定 180）を超える空白を
   「マシンが寝ていた」とみなし `resume.back`（「おかえり」）＋`ctx.gapMin`。activity（idle 離席）が捉えられない
   「マシンごと寝ていた」領域を埋める。`TZ_RESUME=1` で有効化。
+- [uptime.js](uptime.js) … **連続稼働が長い**（`os.uptime()` のしきい値超え・§7-1）。resume の**双子**——あちらは
+  「マシンが寝ていた」を、こちらは「ずっと再起動していない（起きっぱなし）」を拾う。`TZ_UPTIME_MAX_H`（既定 168＝7日）
+  を超えて連続稼働で `uptime.long`（「そろそろ再起動したら?」）＋`ctx.days`/`ctx.hours`。**単方向ナッジ**——
+  uptime は単調増加し回復は再起動時だけ＝佇か自身も再起動して状態がまっさらになるので、enter だけ拾い exit は捨てる
+  （persona に死にタグを増やさない）。`os.uptime()` は node が全 OS で秒に正規化済み＝**読み口が OS 無関係**（§7-3）。`TZ_UPTIME=1` で有効化。
 - [hysteresis.js](hysteresis.js) … しきい値プローブ共有の**判定部品**（シュミットトリガ＝二閾値＋任意デバウンス）。
   純ロジック・IO なし。disk（即時）/ memory（デバウンス）/ nic（below=false）が載る。`makeThreshold({low,high,below,debounce}).feed(v)→'enter'|'exit'|null`。
 - [example-source.js](example-source.js) … 入力コネクタの実行可能な**契約テンプレ**（依存ゼロ・IO 注入・PE縮退）。
@@ -282,7 +287,16 @@ nic/thermal と同系——「机に座る人全員」向けの観察をしき�
 観察対象すら無く、時間の経過だけが信号。nic と同じ `opts.now` 注入でテストする。activity（idle 離席）が
 プロセスごと止まる領域は捉えられないのを埋める。
 
-これで「机に座る人全員」に効く一群（電池・温度・ダウンロード・ゴミ箱・スリープ復帰）が揃った——**git/CI の
+**resume の双子＝[uptime.js](uptime.js)** — resume が「マシンが寝ていた」を空白で拾うのに対し、こちらは
+`os.uptime()`（システム連続稼働秒）が長くなりすぎたら「ずっと再起動していない＝起きっぱなし」を拾う（`uptime.long`＝
+「そろそろ再起動したら?」）。型は trash と同じ below=false の閾値（大きいほど警戒・ゆっくり伸びるのでデバウンス 1）だが、
+**回復遷移を出さない単方向ナッジ**なのが新しい点：uptime はプロセス生存中は単調増加し、短くなるのは再起動時だけ＝
+佇かは自動起動サービスなので**マシン再起動＝佇か自身も再起動して状態がまっさら**になる。だから回復（exit）は同一プロセス内で
+原理的に起きず、enter だけを `uptime.long` に写し exit は捨てる（persona に出ない死にタグを足さない）。`makeThreshold` の
+「初回は基準だけ」規律が、既に長稼働のマシンで佇かが起動し直したとき warn を基準に取って黙る＝**再起動直後に説教しない**を
+無料でくれる。`os.uptime()` は node が全 OS で秒に正規化済み＝**読み口が OS 無関係**（§7-3 の resume/git/download に並ぶ四本目）。
+
+これで「机に座る人全員」に効く一群（電池・温度・ダウンロード・ゴミ箱・スリープ復帰・連続稼働）が揃った——**git/CI の
 ような開発者ニッチより、コンピュータを触る大多数に届く観察を優先**する方針の実体。soft 委譲は「家の中が
 少し見えてる同居人」だが、その“家”は開発部屋とは限らない。
 
@@ -319,11 +333,12 @@ situation 語彙も protocol も不変。判定ロジック（hysteresis・遷�
 「読めない /sys は null で黙る」がもう 1 OS でも起きるだけ。コードの作りは歪まない）。具体的に **thermal だけが
 Mac/Win で特権側に落ちる**＝対応 OS でも黙る。
 
-**移植マトリクス（2026-06-09・Mac＋Win 全 landed 後）：** thermal を除く 9 本が三 OS で観察に到達。
+**移植マトリクス（2026-06-09・Mac＋Win 全 landed 後／uptime は 2026-06-10 に OS 無関係で追加）：** thermal を除く 10 本が三 OS で観察に到達。
 
 | プローブ | 読み口 | Linux | Mac | Win | 対応の所在 |
 |---|---|:--:|:--:|:--:|---|
 | resume | 時計のみ（`opts.now`） | ✓ | ✓ | ✓ | **既に OS 無関係**（読むものが無い） |
+| uptime | `os.uptime()`（`opts.uptime`） | ✓ | ✓ | ✓ | **既に OS 無関係**（node が秒に正規化済み・platform 分岐ゼロ） |
 | git | `git status`（`opts.run`） | ✓ | ✓ | ✓ | **既にクロス**（git はどこでも git） |
 | download | `readdir ~/Downloads` | ✓ | ✓ | ✓ | **ほぼクロス**（標準パス・readdir 不問） |
 | disk | `df -kP`（`opts.run`） | ✓ | **✓実証** | **✓実証** | Mac は df 無改修（実機 10.15.7）／Win=`Win32_LogicalDisk`（実機 tiny10） |

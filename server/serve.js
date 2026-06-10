@@ -28,6 +28,7 @@ import { createThermal } from '../connectors/thermal.js';
 import { createDownload } from '../connectors/download.js';
 import { createTrash } from '../connectors/trash.js';
 import { createResume } from '../connectors/resume.js';
+import { createUptime } from '../connectors/uptime.js';
 import { createReunion } from './reunion.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
@@ -63,9 +64,11 @@ const downloadOn = !!process.env.TZ_DOWNLOAD;
 const trashOn = !!process.env.TZ_TRASH;
 // Resume プローブ（スリープ復帰＝「おかえり」）。poll 間隔の空白で検知・時計だけ。README §7-1。TZ_RESUME=1 で有効。
 const resumeOn = !!process.env.TZ_RESUME;
+// Uptime プローブ（連続稼働が長い＝「そろそろ再起動したら?」）。os.uptime() で検知・全OS正規化済み。resume の双子。README §7-1。TZ_UPTIME=1 で有効。
+const uptimeOn = !!process.env.TZ_UPTIME;
 const makeSources = () => [
   createHomeAssistant(), createGit(), createDisk(), createMemory(), createNet(), createNic(),
-  createBattery(), createThermal(), createDownload(), createTrash(), createResume(),
+  createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -156,6 +159,7 @@ server.listen(PORT, () => {
     downloadOn && 'download',
     trashOn && 'trash',
     resumeOn && 'resume',
+    uptimeOn && 'uptime',
   ].filter(Boolean);
   console.log(conn.length ? `connectors: ${conn.join(' / ')}` : 'connectors: off');
   console.log(broadcast ? 'presence: broadcast（全部屋に居る・デバッグ）' : 'presence: 一度に一箇所（hub ルーティング）');

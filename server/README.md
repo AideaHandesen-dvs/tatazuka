@@ -263,7 +263,7 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 
 - behavior.js は `poll()` を持つ入力源を **`sources: [...]`** で一様に受ける（activity もその一員）。
   serve.js の `makeSources()` が env を見て有効な connector を組み立て、無効なものは `null` を落とす（PE）。
-- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic`/`battery`/`thermal`/`download`/`trash`/`resume` は
+- **どれも env を立てて初めて有効**（立てなければ黙ってオフ＝PE）。`git`/`disk`/`memory`/`net`/`nic`/`battery`/`thermal`/`download`/`trash`/`resume`/`uptime` は
   OpenClaw 連携の **soft 委譲を「ランタイム無し」で実装した readonly プローブ**（[../connectors/README.md](../connectors/README.md) §7-1）。
   後半（電池・温度・DL・ゴミ箱・スリープ）は**開発者ニッチでなくコンピュータを触る大多数に効く**観察を優先したもの。
   読むのは固定の readonly 一点だけ（LLM にコマンドを生成・実行させない＝soft を構造で守る）。
@@ -281,6 +281,7 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | **download** | `TZ_DOWNLOAD=1`（＋`TZ_DOWNLOAD_DIR` 既定 ~/Downloads） | 新規ファイル出現（readdir 差分・エッジ型・件数のみ） | `download.done` |
 | **trash** | `TZ_TRASH=1`（＋`TZ_TRASH_MAX` 既定 100） | ゴミ箱の件数（~/.local/share/Trash/files・below=false） | `trash.full` / `trash.ok` |
 | **resume** | `TZ_RESUME=1`（＋`TZ_RESUME_GAP_S` 既定 180） | スリープ復帰（poll 間隔の空白・時計だけ） | `resume.back` |
+| **uptime** | `TZ_UPTIME=1`（＋`TZ_UPTIME_MAX_H` 既定 168＝7日） | 連続稼働が長い（`os.uptime()`・below=false・単方向） | `uptime.long` |
 
 `friendly_name`（HA）は `ctx.who`、未コミット数・空き率・レート等は ctx で LLM persona に渡り、台詞に
 織り込まれる（「おかえり、◯◯」「foo に3件たまってるぞ」「残り8%だぞ」）。ルールベースは固定台詞。
@@ -291,15 +292,15 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | OS | 効くプローブ | 縮退（黙る）プローブ |
 |---|---|---|
 | **Linux** | 全部 | — |
-| **macOS**（実機 10.15.7 で検証） | git・disk（`df`）・memory（`vm_stat`+`sysctl`）・net（`ifconfig`）・nic（`netstat -ibn`）・battery（`pmset`）・download・trash（`~/.Trash`）・resume | **thermal**（`pmset -g therm` が温度を返さない＝特権/不在） |
-| **Windows** | git・download・resume（OS 非依存のもの） | host 観察系は当面 null 縮退（`readXxxWin` 未実装・次セッション） |
+| **macOS**（実機 10.15.7 で検証） | git・disk（`df`）・memory（`vm_stat`+`sysctl`）・net（`ifconfig`）・nic（`netstat -ibn`）・battery（`pmset`）・download・trash（`~/.Trash`）・resume・uptime | **thermal**（`pmset -g therm` が温度を返さない＝特権/不在） |
+| **Windows**（実機 tiny10 で検証） | git・disk（`Win32_LogicalDisk`）・memory・net・nic・battery（`Win32_*`）・download・trash（`$Recycle.Bin`）・resume・uptime（全 6 本 landed・2026-06-09） | **thermal**（非特権では読めない＝特権/不在） |
 
 縮退＝佇かは他の理由で喋るが「その家の中」は見えない（PE）。Mac は依存ゼロのまま（CLI を叩くだけ・SDK なし）。
 
 ```sh
-# 例：空き容量＋メモリ＋ネット＋電池＋温度＋ダウンロード＋ゴミ箱＋スリープ復帰（机に座る人向けの素のセット）
+# 例：空き容量＋メモリ＋ネット＋電池＋温度＋ダウンロード＋ゴミ箱＋スリープ復帰＋連続稼働（机に座る人向けの素のセット）
 TZ_DISK_PATH=/ TZ_MEM=1 TZ_NET=1 TZ_NIC=1 \
-TZ_BATTERY=1 TZ_TEMP=1 TZ_DOWNLOAD=1 TZ_TRASH=1 TZ_RESUME=1 \
+TZ_BATTERY=1 TZ_TEMP=1 TZ_DOWNLOAD=1 TZ_TRASH=1 TZ_RESUME=1 TZ_UPTIME=1 \
   node server/serve.js
 # 開発者向けに足すなら：TZ_HASS_URL=... TZ_HASS_TOKEN=... TZ_HASS_PERSON=person.john TZ_GIT_REPO=/home/me/proj
 # 起動ログの "connectors:" 行に、有効になったプローブが並ぶ

@@ -76,6 +76,8 @@ const LLM_SITUATIONS = {
   'trash.ok':       'ゴミ箱が片付いてスッキリした。さりげなく認める',
   // スリープ復帰（connectors/resume.js が poll の空白でマシンの離脱を検知。ctx.gapMin に空白の長さ[分]）
   'resume.back':    'PC がスリープ（休止）から復帰した。「おかえり」と出迎える',
+  // 連続稼働（connectors/uptime.js が os.uptime() のしきい値超えを検知。ctx.days に連続稼働日数・ctx.hours に時間）
+  'uptime.long':    'PC を何日も再起動せず動かしっぱなしになっている。たまには再起動して休ませるよう促す',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -213,6 +215,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // スリープ復帰（resume.back）：空白の長さを添える（「2時間ぶりだな」のように織り込ませる）
   if (ctx && ctx.gapMin != null && situation === 'resume.back') {
     s += `\n離れていた時間: 約${ctx.gapMin} 分`;
+  }
+  // 連続稼働（uptime.long）：稼働日数・時間を添える（「もう8日もつけっぱなしだぞ」のように織り込ませる）
+  if (ctx && ctx.hours != null && situation === 'uptime.long') {
+    s += `\n連続稼働: 約${ctx.days} 日（${ctx.hours} 時間）`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

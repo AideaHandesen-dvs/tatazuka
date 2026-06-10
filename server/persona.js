@@ -143,6 +143,11 @@ const TABLES = {
   'resume.back':[['お、起きたか。おかえり。', '喜び'],
                  ['ん、戻ってきたな。…寝てたのか？', '通常']],
 
+  // 連続稼働が長い（connectors/uptime.js が os.uptime() のしきい値超えを検知＝resume の双子。
+  // ルール表は固定台詞＝ctx は使わない。LLM は ctx.days/ctx.hours 込みで生成）
+  'uptime.long':[['お前、ずっとつけっぱなしだろ。たまには再起動してやれ。', '呆れ'],
+                 ['だいぶ動かしっぱなしだぞ。一回休ませたらどうだ。', '通常']],
+
   // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
   // LLM persona はここを ctx.weather 込みで生成に格上げする）
   'weather.morning':   [['ん、朝か。空、見たか？', '通常'],
