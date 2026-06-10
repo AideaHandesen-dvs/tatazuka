@@ -101,6 +101,8 @@ const LLM_SITUATIONS = {
   // 消費電力（connectors/power.js が HA 電力センサのしきい値超えを検知。ctx.watts に現在の電力[W]）
   'power.high':     '消費電力が高くなった。つけっぱなしの家電がないか気遣う（省エネ・家計）',
   'power.ok':       '消費電力が下がって落ち着いた。さりげなく認める',
+  // 消し忘れ（connectors/awaypower.js が「留守（不在）× 高電力の継続」を合成検知。ctx.watts に電力[W]・ctx.awayMin に留守が続いた分数）
+  'power.forgotten':'留守（不在）なのに消費電力が高いまま続いている＝消し忘れの疑い。エアコンや家電を消したか気遣う（省エネ・火の元）',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -273,6 +275,11 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 消費電力（power.*）：現在の電力 W を添える（「800Wも食ってるぞ」のように織り込ませる）
   if (ctx && ctx.watts != null && (situation === 'power.high' || situation === 'power.ok')) {
     s += `\n現在の消費電力: ${ctx.watts} W`;
+  }
+  // 消し忘れ（power.forgotten）：留守中の電力 W と、留守が続いた長さ（「15分留守で500Wだぞ」のように織り込ませる）
+  if (ctx && situation === 'power.forgotten') {
+    if (ctx.watts != null) s += `\n現在の消費電力: ${ctx.watts} W`;
+    if (ctx.awayMin != null) s += `\n留守が続いている時間: 約${ctx.awayMin} 分`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

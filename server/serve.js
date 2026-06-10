@@ -25,6 +25,7 @@ import { createIlluminance } from '../connectors/illuminance.js';
 import { createOpening } from '../connectors/opening.js';
 import { createMotion } from '../connectors/motion.js';
 import { createPower } from '../connectors/power.js';
+import { createAwayPower } from '../connectors/awaypower.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
@@ -68,6 +69,9 @@ const openingOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && pro
 const motionOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_MOTION);
 // Power（HA の電力センサ＝消費電力の high↔ok）。片側 below=false。URL/トークン＋対象 sensor で有効。
 const powerOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_POWER);
+// AwayPower（留守 × 高電力の継続＝消し忘れ）。在席(person)と電力(power)の二源を時計で合成＝合成型の二例目。
+// 在席と電力の両方が揃った人にだけ自然に生える（追加 env ゼロ・閾値/滞留は TZ_AWAY_HIGH/TZ_AWAY_DWELL_S で）。
+const awayPowerOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_PERSON && process.env.TZ_HASS_POWER);
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
@@ -93,7 +97,7 @@ const resumeOn = !!process.env.TZ_RESUME;
 const uptimeOn = !!process.env.TZ_UPTIME;
 const makeSources = () => [
   createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createIlluminance(), createOpening(),
-  createMotion(), createPower(),
+  createMotion(), createPower(), createAwayPower(),
   createGit(), createDisk(), createMemory(), createNet(), createNic(),
   createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
@@ -183,6 +187,7 @@ server.listen(PORT, () => {
     openingOn && `opening（${process.env.TZ_HASS_OPENING}）`,
     motionOn && `motion（${process.env.TZ_HASS_MOTION}）`,
     powerOn && `power（${process.env.TZ_HASS_POWER}）`,
+    awayPowerOn && `awaypower（留守×電力＝消し忘れ）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',

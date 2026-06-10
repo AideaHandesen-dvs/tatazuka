@@ -190,10 +190,15 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 - [power.js](power.js) … **HA の電力センサで消費電力の high↔ok**（`power.high`/`power.ok`）。片側 below=false（co2 と同系）。
   `TZ_POWER_HIGH`（既定 500W）超えで `power.high`、戻し 400W で `power.ok`・debounce 3（レンジ/ケトルの瞬間負荷弾き）。
   全体計に向ければ「今どれだけ食ってるか」、個別プラグに向ければ閾値を下げて「その家電つけっぱ」。`ctx.watts`。`TZ_HASS_POWER` で有効化。
-  限界：今は瞬間値のしきい値で、留守×高電力の「消し忘れ」までは見ていない（在席との合成は将来）。
+  これ単体は「今この瞬間の大きさ」だけ＝留守×高電力の「消し忘れ」は次の awaypower（在席との合成）が担う。
+- [awaypower.js](awaypower.js) … **留守 × 高電力の継続を合成検知**（`power.forgotten`）＝**合成型の二例目**。在席（person の
+  home/not_home）と電力（power の W）の**二つの蛇口を AND で噛み合わせ**、留守かつ電力 ≥ `TZ_AWAY_HIGH`（既定 300W）が
+  `TZ_AWAY_DWELL_S`（既定 900s＝15 分）続いたら **一度だけ**「誰もいないのに食ってるぞ＝消し忘れ」。帰宅 or 電力低下で解消＝再武装。
+  dwell が「ちょっと出ただけ」「レンジの一瞬」を自然に弾く（デバウンス不要）。`ctx.watts`/`ctx.awayMin`。**在席(TZ_HASS_PERSON)と
+  電力(TZ_HASS_POWER)の両方が揃った人にだけ自然に生える**（追加 env ゼロ）＝既存二源の組合せで新しい観察を作る合成の本領。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
   humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）・motion（人感）・power（電力）が
-  分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
+  分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。awaypower は**二本**作って合成する。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -327,6 +332,11 @@ makeThreshold（片側・enter/exit）の対になる新 factory。**[humidity.j
 **[motion.js](motion.js) 人感＝二値＋滞留タイムアウトの合成（home-assistant の二値 × resume の時計）**。
 HA の同じ REST 読み（ha.js）の上で、量の性質に応じて makeBand / makeThreshold(両向き) / 二値 / 二値＋時計 を選ぶだけ——「センサ＝数値（or 状態）」を situation に翻訳する層が型を吸収している証拠。
 合成型（motion）が出たことで、既存の小部品（二値・時計・しきい値）を**混ぜて**新しい観察を作れることも示せた（新抽象は足していない）。
+**合成の二例目＝[awaypower.js](awaypower.js)**（留守 × 高電力＝消し忘れ）。motion が「一つの entity × 時計」だったのに対し、
+awaypower は **二つの entity（在席 person ＝二値 ／ 電力 power ＝しきい値）を AND で噛み合わせ、さらに時計で滞留を測る**＝一段上の合成。
+ここで効くのは「合成は新しい判定抽象を要らない」という事実——`makeHassReader` を二本作って両方読み、`away && watts≥high` を時計で
+ゲートするだけ＝既存部品の組合せで、単源では作れない観察（power 単体は留守を知らず、person 単体は電力を知らない）を生む。
+しかも在席と電力の両 env が揃った人にだけ自然に生える＝**追加コネクタの限界費用がほぼゼロ**であることの実証（README §6-4・power.js が自分で名指しした将来像）。
 **ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
 nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。**CO2 [co2.js](co2.js)** も同型
 （below=false・大きいほど悪い・`TZ_CO2_HIGH` 既定 1000ppm で `co2.stuffy`／`ctx.ppm`）＝湿度が両側だったのに対し

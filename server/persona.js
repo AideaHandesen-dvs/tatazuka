@@ -201,6 +201,11 @@ const TABLES = {
   'power.ok':  [['お、電気落ち着いたな。', '通常'],
                 ['電力、下がったか。', '通常']],
 
+  // 消し忘れ（connectors/awaypower.js が「留守 × 高電力が継続」を合成検知＝motion に続く合成型の二例目。
+  // ルール表は固定台詞＝ctx は使わない。LLM は ctx.watts / ctx.awayMin 込みで生成）
+  'power.forgotten':[['誰もいないのに電気食ってるぞ。消し忘れてないか？', '疑い'],
+                     ['留守なのに電力高いままだ。…何か点けっぱなしじゃないか。', '疑い']],
+
   // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
   // LLM persona はここを ctx.weather 込みで生成に格上げする）
   'weather.morning':   [['ん、朝か。空、見たか？', '通常'],
