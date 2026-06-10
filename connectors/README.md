@@ -208,6 +208,13 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   判定（makeThreshold）・persona（power.* 再利用）・ctx（watts）は丸ごと power と共有し、違うのは `mqtt.js` の `read`＋`pick` の一点だけ。
   `TZ_MQTT_POWER`（topic）＋任意 `TZ_MQTT_POWER_PATH`（生値/JSON フィールド・**Tasmota スマートプラグは `ENERGY.Power`**）＋閾値は power と共有（`TZ_POWER_HIGH` 既定 500W）。
   安物スマートプラグ（Tasmota/Shelly…）が MQTT で吐く電力をそのまま拾える＝`mqtt.js` の `pick` コメントが例に挙げた `ENERGY.Power` が現実の配線になる。
+- [mqtthumidity.js](mqtthumidity.js) … **MQTT の湿度 topic で室内湿度の快適帯**（`humidity.dry`/`humidity.humid`/`humidity.ok`）＝**非 HA 入力源の三例目**。
+  観察は humidity と同じ（乾燥/じめじめ/快適）だが、値の出どころが HA REST でなく **MQTT ブローカー直結**。判定型としては mqtttemp と同じ
+  **両側帯（makeBand）**だが「室温」でなく「湿度」＝同じ band を意味づけだけ変えて使い回す（humidity が HA REST で roomtemp と band を
+  共有したのと同じ構図を MQTT でも示す）。判定（makeBand）・persona（humidity.* 再利用）・ctx（pct）は丸ごと humidity と共有、違うのは
+  `mqtt.js` の `read`＋`pick` の一点だけ。`TZ_MQTT_HUMIDITY`（topic）＋任意 `TZ_MQTT_HUMIDITY_PATH`（生値/JSON フィールド・**Tasmota 温湿度センサは
+  `AM2301.Humidity` 等**）＋快適帯は humidity と共有（`TZ_HUMIDITY_LOW`〜`TZ_HUMIDITY_HIGH` 既定 40〜60）。**これで MQTT は両側帯・片側しきい値の
+  両判定型を運ぶことが揃った**＝トランスポートは判定型に直交（mqtttemp＝帯／mqttpower＝しきい値／mqtthumidity＝帯の別意味づけ）。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
   humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）・motion（人感）・power（電力）が
   分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。awaypower は**二本**作って合成する。
@@ -265,7 +272,8 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 **まだ無い（M5 の残り）**：
 
 - **入力**：HA 以外のイベント源——**MQTT は温度・電力の二本が着地済み**（[mqtt.js](mqtt.js) 共有トランスポート＋[mqtttemp.js](mqtttemp.js) 両側帯＋[mqttpower.js](mqttpower.js) 片側しきい値）
-  ＝「既存型の別トランスポート」という割り切りで判定/persona を再利用し、**判定型が違っても同じトランスポートに乗る**ことまで実証済み。残りは MQTT の他センサ（湿度を humidity 流に等）・他の HA ドメイン等。型は揃ったので足すだけ。
+  ＋[mqtthumidity.js](mqtthumidity.js)（両側帯の別意味づけ）の三本＝「既存型の別トランスポート」という割り切りで判定/persona を再利用し、
+  **判定型が違っても（帯/しきい値）同じトランスポートに乗る**ことまで実証済み。残りは MQTT の他センサ（CO2/照度等を同じ要領で）・他の HA ドメイン等。型は揃ったので足すだけ。
 - **委譲（soft）**：curated readonly プローブを入力コネクタとして足す（§7-1）。**git（二値）・ディスク（しきい値）は実装済み**
   （`git.js` / `disk.js`）。他（ビルド/テスト状態 等）は同じ型に沿って足すだけ。「開いてるファイル」はアクティブ
   ウィンドウ依存で Wayland 不可・プライバシーのため見ない（activity.js と同方針）。open-ended な delegate

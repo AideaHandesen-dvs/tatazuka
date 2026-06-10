@@ -281,6 +281,7 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | **awaypower** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_PERSON` ＋ `TZ_HASS_POWER`（＋`TZ_AWAY_HIGH` 既定 300・`TZ_AWAY_DWELL_S` 既定 900） | **合成**：留守(person≠home) × 高電力(W) が滞留＝消し忘れ | `power.forgotten` |
 | **mqtttemp** | `TZ_MQTT_URL`（ブローカー）＋ `TZ_MQTT_TEMP`（topic）（＋`TZ_MQTT_TEMP_PATH` 取り出しパス・`TZ_ROOMTEMP_LOW/HIGH` 共有） | **非 HA**：MQTT の温度 topic を室温の快適帯に（roomtemp の別トランスポート） | `roomtemp.cold` / `roomtemp.hot` / `roomtemp.ok` |
 | **mqttpower** | `TZ_MQTT_URL`（ブローカー）＋ `TZ_MQTT_POWER`（topic）（＋`TZ_MQTT_POWER_PATH` 取り出しパス・Tasmota は `ENERGY.Power`・`TZ_POWER_HIGH` 共有） | **非 HA**：MQTT の電力 topic を消費電力のしきい値に（power の別トランスポート・片側 below=false） | `power.high` / `power.ok` |
+| **mqtthumidity** | `TZ_MQTT_URL`（ブローカー）＋ `TZ_MQTT_HUMIDITY`（topic）（＋`TZ_MQTT_HUMIDITY_PATH` 取り出しパス・Tasmota は `AM2301.Humidity`・`TZ_HUMIDITY_LOW/HIGH` 共有） | **非 HA**：MQTT の湿度 topic を室内湿度の快適帯に（humidity の別トランスポート・両側帯） | `humidity.dry` / `humidity.humid` / `humidity.ok` |
 | **git** | `TZ_GIT_REPO`（監視リポのパス） | 未コミット・未 push（`git status --porcelain=v2 --branch`） | `git.dirty`/`git.clean`・`git.unpushed`/`git.pushed` |
 | **disk** | `TZ_DISK_PATH`（＋`TZ_DISK_MIN_PCT` 既定 10） | 空き容量（`df`・しきい値） | `disk.low` / `disk.ok` |
 | **memory** | `TZ_MEM=1`（＋`TZ_MEM_MIN_PCT` 既定 10） | 空きメモリ（`/proc/meminfo`・デバウンス付き） | `mem.low` / `mem.ok` |
