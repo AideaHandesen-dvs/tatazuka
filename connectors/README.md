@@ -164,8 +164,12 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   低すぎ（乾燥）も高すぎ（じめじめ）も警戒し、`TZ_HUMIDITY_LOW`〜`TZ_HUMIDITY_HIGH`（既定 40〜60）の帯は黙る（`makeBand`）。
   `ctx.pct` を LLM が織り込む。`TZ_HASS_URL`＋`TZ_HASS_TOKEN`（在席と共有）＋`TZ_HASS_HUMIDITY`（対象 sensor）で有効化。
   HA REST の読みは [ha.js](ha.js) に共有（home-assistant と分け合う）。センサが無ければ黙る（PE）。
-- [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）と
-  humidity（湿度）が分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が二本になったので一点に寄せた）。
+- [co2.js](co2.js) … **HA の室内 CO2 の stuffy↔ok**（`co2.stuffy`/`co2.ok`）。湿度と並ぶ「部屋の中」の二本目。
+  湿度（両側）と違い CO2 は**片側＝大きいほど悪い**（外気以下にならず低い分には害なし）＝thermal/nic と同じ
+  `makeThreshold` の below=false。`TZ_CO2_HIGH`（既定 **1000ppm**＝建築物衛生法の室内目安）超えで `co2.stuffy`、
+  戻し 800ppm で `co2.ok`。`ctx.ppm` を LLM が織り込む。`TZ_HASS_CO2` で有効化（ha.js 共有・センサ無ければ PE）。
+- [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
+  humidity（湿度）・co2（CO2）が分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -293,7 +297,9 @@ hysteresis をそのまま使いつつ、**流す値の側でゲートする**�
 `low`/`ok`/`high` の三つで、極から戻るには margin だけ余分に戻る（両端にシュミットトリガを置いた格好）＋debounce。
 makeThreshold（片側・enter/exit）の対になる新 factory で、**室温や CO2 にもそのまま再利用できる**（[humidity.js](humidity.js) が初例）。
 **ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
-nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。
+nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。**CO2 [co2.js](co2.js)** も同型
+（below=false・大きいほど悪い・`TZ_CO2_HIGH` 既定 1000ppm で `co2.stuffy`／`ctx.ppm`）＝湿度が両側だったのに対し
+CO2 は「低すぎて困る」が無いので片側。HA の同じ sensor 読み（ha.js）でも、湿度＝両側帯・CO2＝片側と**判定型が分かれる**好例。
 
 **しきい値ではない型・その2＝時計だけの型：[resume.js](resume.js)** — /sys も /proc も読まない soft の極北。
 **poll が呼ばれる実時計間隔**を測り、想定 tick よりずっと長い空白を「マシンが寝ていた＝スリープ復帰」とみなす。
