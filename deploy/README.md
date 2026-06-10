@@ -21,7 +21,7 @@
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
 | **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ **Linux＋macOS＋Windows 全 landed**（各実機で起動＋クラッシュ自動復活を実証／上表） |
-| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟢 **三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall。署名不要を実証）。証明書は openssl／`--mkcert`／`--tailscale`（本物 LE・警告ゼロ）の三段すべて実装済（下節）。残るは実機スマホでの信頼テスト（要ユーザー） |
+| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟢 **三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall。署名不要を実証）。証明書は openssl／`--mkcert`／`--tailscale`（本物 LE・警告ゼロ）の三段すべて実装済（下節）。**`--mkcert` は実機 iPad で表示＋カメラまで landed（client M2・2026-06-08）＝LAN 利用はこれで完結。`--tailscale` は外から繋ぐ用の任意**（LAN には不要・サーバ側 e2e のみ） |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
 ②の前提——node を入れる・repo を持ってくる・HTTPS 証明書を作る——は、各 OS 節の「前提」に手順として
@@ -108,7 +108,8 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
    `schtasks /Run`→**HTTPS 200**（node クライアント）→`-Uninstall`。FW 開放は admin 時のみ・無ければ localhost）。
    `irm|iex` 経由なら SmartScreen も出ない＝**署名不要を実証**。
 
-4. **`--tailscale`**（証明書のボス＝見る端末で警告ゼロにする本物の Let's Encrypt パス）✅ **三 OS 実装**
+4. **`--tailscale`**（本物の Let's Encrypt パス＝**外から繋ぐ用の任意オプション。LAN 利用には不要**
+   ——LAN なら上の `--mkcert` が実機 iPad でカメラまで landed 済＝それで完結）✅ **三 OS 実装**
    （2026-06-10・`install.sh`＝Linux/macOS／`install.ps1`＝Windows）。佇か自身は**自己署名 HTTPS のまま**
    （serve.js 無改修）、Tailscale が前段で TLS 終端し、自己署名バックエンドへは `https+insecure://localhost:$PORT`
    で繋ぐ＝**見る端末のブラウザは本物の LE で警告ゼロ**。`tailscale serve --bg`（旧 CLI は `serve https:443 /`
@@ -118,7 +119,10 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
    **server 側 e2e ✅ 実証**（2026-06-10・実機 durandal）：`tailscale up`→Serve 有効化→`serve --bg` 設置後、
    `curl https://durandal.<tailnet>.ts.net/`（**`-k` 無し**）で **HTTP 200・`ssl_verify_result=0`**、証明書は
    **issuer=Let's Encrypt / subject=CN=durandal.<tailnet>.ts.net・90日**＝自己署名バックエンドに本物の LE が
-   被さってることを確認。**残るは見る端末（iPad/スマホ）から開いて警告ゼロ＋傾き/カメラ許可までの確認＝要ユーザー**。
+   被さってることを確認。見る端末側からの確認は未実施だが、**そもそも LAN 利用なら `--mkcert` で足り、Tailscale
+   は外出先から繋ぎたいときだけの任意**なので必須経路ではない（見る端末は Tailscale ON が要る＝OS は VPN を 1 本しか
+   張れず素の WireGuard 等とは排他）。**「警告ゼロで実機表示＋カメラ」は `--mkcert` 経路で 2026-06-08 に landed 済**
+   （実機 iPad Air 2・client M2）。
 
    実地で出た**前提が2つ**（どちらも tailnet/admin 側の一回ぽっきり。導入スクリプトは検知して誘導し止まる）：
    - **Serve を tailnet で有効化**：初回は `Serve is not enabled on your tailnet` と admin URL が出る。開いて Enable
