@@ -21,6 +21,8 @@ import { createHomeAssistant } from '../connectors/home-assistant.js';
 import { createHumidity } from '../connectors/humidity.js';
 import { createCo2 } from '../connectors/co2.js';
 import { createRoomTemp } from '../connectors/roomtemp.js';
+import { createIlluminance } from '../connectors/illuminance.js';
+import { createOpening } from '../connectors/opening.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
@@ -55,6 +57,11 @@ const co2On = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process
 // RoomTemp（HA の室温センサ＝快適帯）。湿度・CO2 と並ぶ「部屋の中」三本目。URL/トークン＋対象 sensor で有効。
 // 接続ごとに作る（快適帯の状態を端末ごとに独立）。揃わなければ createRoomTemp は null（PE）。README §7-1。
 const roomtempOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_TEMP);
+// Illuminance（HA の照度センサ＝暗くなったら「電気つけたら」）。「部屋の中」四本目。片側 below=true。URL/トークン＋対象 sensor で有効。
+const illuminanceOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_LUX);
+// Opening（HA の binary_sensor＝ドア/窓の開閉）。二値遷移＝在席と同型。URL/トークン＋対象 entity で有効。
+// いずれも接続ごとに作る（遷移/しきい値の状態を端末ごとに独立）。揃わなければ null（PE）。README §7-1。
+const openingOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_OPENING);
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
@@ -79,7 +86,8 @@ const resumeOn = !!process.env.TZ_RESUME;
 // Uptime プローブ（連続稼働が長い＝「そろそろ再起動したら?」）。os.uptime() で検知・全OS正規化済み。resume の双子。README §7-1。TZ_UPTIME=1 で有効。
 const uptimeOn = !!process.env.TZ_UPTIME;
 const makeSources = () => [
-  createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createGit(), createDisk(), createMemory(), createNet(), createNic(),
+  createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createIlluminance(), createOpening(),
+  createGit(), createDisk(), createMemory(), createNet(), createNic(),
   createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
 
@@ -164,6 +172,8 @@ server.listen(PORT, () => {
     humidityOn && `humidity（${process.env.TZ_HASS_HUMIDITY}）`,
     co2On && `co2（${process.env.TZ_HASS_CO2}）`,
     roomtempOn && `roomtemp（${process.env.TZ_HASS_TEMP}）`,
+    illuminanceOn && `illuminance（${process.env.TZ_HASS_LUX}）`,
+    openingOn && `opening（${process.env.TZ_HASS_OPENING}）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',

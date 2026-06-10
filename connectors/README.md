@@ -144,6 +144,9 @@ weather/activity と同型（fetch 注入・PE縮退・遷移検知）で、prot
   枯れているので fetch 一本で足り、依存ゼロを崩さない。**第一の拡張＝[humidity.js](humidity.js)**（HA の
   `sensor.*` を読む室内湿度の快適帯）。REST の読み（認証・URL・PE）は [ha.js](ha.js) に共有し、在席（状態文字列）と
   湿度（数値の両側しきい値）で**意味論だけ分けた**——「天気でなく部屋の中」という HA が唯一くれる価値を取りにいく初例。
+  その後 [co2.js](co2.js)（CO2）・[roomtemp.js](roomtemp.js)（室温）・[illuminance.js](illuminance.js)（照度）と `sensor.*` 系が増え、
+  **[opening.js](opening.js)（ドア/窓の `binary_sensor`）は在席と完全に同型の二値遷移**＝この §5 の在席ロジックの「人物→開口部」版。
+  いずれも ha.js を共有し protocol は不変（`say` に乗るだけ）。「部屋の中」を読む六本の型の整理は §7-1 末尾。
 
 ```sh
 TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=person.john \
@@ -172,8 +175,17 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   **両側帯（快適帯）の二例目**（湿度に続く・makeBand）。寒すぎも暑すぎも警戒し、`TZ_ROOMTEMP_LOW`〜`TZ_ROOMTEMP_HIGH`
   （既定 **18〜28℃**＝建築物衛生法/事務所衛生基準の室内目安）の帯は黙る。屋外天気の `weather.hot`/`weather.cold`・CPU の
   `temp.hot` とは**別の身体**なので `roomtemp.*` で名前空間を分ける（「外は寒いが部屋は暑い」が共存）。`ctx.tempC` を LLM が織り込む。`TZ_HASS_TEMP` で有効化。
+- [illuminance.js](illuminance.js) … **HA の室内照度の dark↔ok**（`illuminance.dark`/`illuminance.ok`）。「部屋の中」四本目。
+  夕暮れに照明をつけ忘れて薄暗い、を拾う。型は **片側 below=true（小さいほど悪い＝暗い）**＝disk/memory と同系
+  （CO2 の below=false と逆向き）。`TZ_LUX_MIN`（既定 50lux）を割り続けると `illuminance.dark`、戻し 80lux で `illuminance.ok`。
+  雲の通過・人影の翳りをデバウンス 3 で弾く。`ctx.lux` を LLM が織り込む。`TZ_HASS_LUX` で有効化。
+- [opening.js](opening.js) … **HA の binary_sensor＝ドア/窓の開閉**（`opening.open`/`opening.closed`）。しきい値型でなく
+  **二値遷移＝[home-assistant.js](home-assistant.js)（在席）と完全に同型**（出自が人物の在席でなく開口部の開閉なだけ）。
+  `on`＝開／`off`＝閉、初回基準・無変化は黙る。`ctx.what`（friendly_name）で「リビングの窓、開いてるぞ」。
+  開けっ放しが気になる開口部（窓/ベランダ）に向ける想定（頻繁に開閉する玄関は賑やかになる＝env で選ぶ）。`TZ_HASS_OPENING` で有効化。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
-  humidity（湿度）・co2（CO2）・roomtemp（室温）が分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
+  humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）が分け合う純 IO 部品
+  （`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -301,6 +313,10 @@ hysteresis をそのまま使いつつ、**流す値の側でゲートする**�
 `low`/`ok`/`high` の三つで、極から戻るには margin だけ余分に戻る（両端にシュミットトリガを置いた格好）＋debounce。
 makeThreshold（片側・enter/exit）の対になる新 factory。**[humidity.js](humidity.js) が初例・[roomtemp.js](roomtemp.js)（室温）が二例目**で、
 同じ band を意味づけだけ変えて使い回す。注意：**CO2 は band でなく片側**（low 側の害が無い）＝同じ「室内環境」でも量の性質で型が分かれる（[co2.js](co2.js)）。
+
+**「部屋の中」六本（ha.js の上）で判定型が出揃った**：湿度・室温＝両側帯（makeBand）／CO2＝片側 below=false（大きいほど悪い）／
+**[illuminance.js](illuminance.js) 照度＝片側 below=true（小さいほど悪い＝暗い・disk/memory と同系）**／**[opening.js](opening.js) ドア窓＝二値遷移（home-assistant 在席と同型）**。
+HA の同じ REST 読み（ha.js）の上で、量の性質に応じて makeBand / makeThreshold(両向き) / 二値 を選ぶだけ——「センサ＝数値（or 状態）」を situation に翻訳する層が型を吸収している証拠。
 **ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
 nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。**CO2 [co2.js](co2.js)** も同型
 （below=false・大きいほど悪い・`TZ_CO2_HIGH` 既定 1000ppm で `co2.stuffy`／`ctx.ppm`）＝湿度が両側だったのに対し

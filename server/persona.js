@@ -173,6 +173,20 @@ const TABLES = {
   'roomtemp.ok':  [['お、ちょうどいい室温になったな。', '通常'],
                    ['過ごしやすくなったか。', '通常']],
 
+  // 室内の明るさ（connectors/illuminance.js が HA 照度センサのしきい値割れを検知＝below=true の片側。
+  // ルール表は固定台詞＝ctx.lux は使わない。LLM は ctx.lux 込みで生成）
+  'illuminance.dark':[['暗くなってきたぞ。電気、つけたらどうだ。', '通常'],
+                      ['そんな暗がりで目、悪くするぞ。', '呆れ']],
+  'illuminance.ok':  [['お、明るくなったな。', '通常'],
+                      ['それくらい見えてた方がいいぞ。', '通常']],
+
+  // ドア/窓の開閉（connectors/opening.js が HA binary_sensor の on↔off を検知＝在席と同型の二値遷移。
+  // ルール表は固定台詞＝ctx.what は使わない。LLM は ctx.what＝対象名込みで生成）
+  'opening.open':  [['お、開いたな。…開けっ放しにすんなよ。', '通常'],
+                    ['窓、開いてるぞ。寒く（暑く）ないか？', '疑い']],
+  'opening.closed':[['お、閉めたか。', '通常'],
+                    ['ん、閉まったな。', '通常']],
+
   // 天気（weather.js が変化を検知して投げる。ルール表は固定台詞＝ctx.weather は使わない。
   // LLM persona はここを ctx.weather 込みで生成に格上げする）
   'weather.morning':   [['ん、朝か。空、見たか？', '通常'],

@@ -274,6 +274,8 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | **humidity** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_HUMIDITY`（＋`TZ_HUMIDITY_LOW`/`HIGH` 既定 40/60） | HA の室内湿度（`sensor.*`・両側しきい値＝快適帯） | `humidity.dry` / `humidity.humid` / `humidity.ok` |
 | **co2** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_CO2`（＋`TZ_CO2_HIGH` 既定 1000） | HA の室内 CO2（`sensor.*`・below=false＝大きいほど悪い） | `co2.stuffy` / `co2.ok` |
 | **roomtemp** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_TEMP`（＋`TZ_ROOMTEMP_LOW`/`HIGH` 既定 18/28） | HA の室温（`sensor.*`・両側しきい値＝快適帯） | `roomtemp.cold` / `roomtemp.hot` / `roomtemp.ok` |
+| **illuminance** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_LUX`（＋`TZ_LUX_MIN` 既定 50） | HA の室内照度（`sensor.*`・below=true＝小さいほど悪い＝暗い） | `illuminance.dark` / `illuminance.ok` |
+| **opening** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_OPENING` | HA のドア/窓（`binary_sensor`・on=開・二値遷移） | `opening.open` / `opening.closed` |
 | **git** | `TZ_GIT_REPO`（監視リポのパス） | 未コミット・未 push（`git status --porcelain=v2 --branch`） | `git.dirty`/`git.clean`・`git.unpushed`/`git.pushed` |
 | **disk** | `TZ_DISK_PATH`（＋`TZ_DISK_MIN_PCT` 既定 10） | 空き容量（`df`・しきい値） | `disk.low` / `disk.ok` |
 | **memory** | `TZ_MEM=1`（＋`TZ_MEM_MIN_PCT` 既定 10） | 空きメモリ（`/proc/meminfo`・デバウンス付き） | `mem.low` / `mem.ok` |

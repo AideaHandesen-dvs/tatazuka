@@ -89,6 +89,12 @@ const LLM_SITUATIONS = {
   'roomtemp.cold':  '部屋（屋外でなく室内）が寒い。暖房や着込むなど暖まるよう促す',
   'roomtemp.hot':   '部屋（屋外でなく室内）が暑い。冷房など涼むよう促す。無理しないよう気遣う',
   'roomtemp.ok':    '室温が快適な範囲に戻った。「過ごしやすくなった」とさりげなく認める',
+  // 室内の明るさ（connectors/illuminance.js が HA 照度センサのしきい値割れを検知。ctx.lux に現在の照度[lux]）
+  'illuminance.dark': '部屋が暗くなってきた（薄暗い中で過ごしている）。照明をつけるよう促す。目を気遣う',
+  'illuminance.ok':   '部屋が明るくなった（照明がついた/日が差した）。さりげなく認める',
+  // ドア/窓の開閉（connectors/opening.js が HA binary_sensor の開閉を検知。ctx.what に対象名＝あれば「リビングの窓」等）
+  'opening.open':   '窓やドアが開いた。開けっ放しを気遣う（寒い/暑い/防犯）。状況により換気ならむしろ歓迎',
+  'opening.closed': '窓やドアが閉まった。さらっと一言（軽く）',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -242,6 +248,14 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 室温（roomtemp.*）：現在の室温℃を添える（「室温15℃、冷えすぎだぞ」のように織り込ませる）
   if (ctx && ctx.tempC != null && (situation === 'roomtemp.cold' || situation === 'roomtemp.hot' || situation === 'roomtemp.ok')) {
     s += `\n現在の室温: ${ctx.tempC}℃`;
+  }
+  // 明るさ（illuminance.*）：現在の照度 lux を添える（「20ルクス、暗すぎだぞ」のように織り込ませる）
+  if (ctx && ctx.lux != null && (situation === 'illuminance.dark' || situation === 'illuminance.ok')) {
+    s += `\n現在の室内照度: ${ctx.lux} lux`;
+  }
+  // ドア/窓（opening.*）：対象名を添える（「リビングの窓、開いてるぞ」のように織り込ませる）
+  if (ctx && ctx.what && (situation === 'opening.open' || situation === 'opening.closed')) {
+    s += `\n対象: ${ctx.what}`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
