@@ -168,8 +168,12 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   湿度（両側）と違い CO2 は**片側＝大きいほど悪い**（外気以下にならず低い分には害なし）＝thermal/nic と同じ
   `makeThreshold` の below=false。`TZ_CO2_HIGH`（既定 **1000ppm**＝建築物衛生法の室内目安）超えで `co2.stuffy`、
   戻し 800ppm で `co2.ok`。`ctx.ppm` を LLM が織り込む。`TZ_HASS_CO2` で有効化（ha.js 共有・センサ無ければ PE）。
+- [roomtemp.js](roomtemp.js) … **HA の室温の cold↔hot↔ok**（`roomtemp.cold`/`roomtemp.hot`/`roomtemp.ok`）。「部屋の中」三本目で
+  **両側帯（快適帯）の二例目**（湿度に続く・makeBand）。寒すぎも暑すぎも警戒し、`TZ_ROOMTEMP_LOW`〜`TZ_ROOMTEMP_HIGH`
+  （既定 **18〜28℃**＝建築物衛生法/事務所衛生基準の室内目安）の帯は黙る。屋外天気の `weather.hot`/`weather.cold`・CPU の
+  `temp.hot` とは**別の身体**なので `roomtemp.*` で名前空間を分ける（「外は寒いが部屋は暑い」が共存）。`ctx.tempC` を LLM が織り込む。`TZ_HASS_TEMP` で有効化。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
-  humidity（湿度）・co2（CO2）が分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
+  humidity（湿度）・co2（CO2）・roomtemp（室温）が分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -295,7 +299,8 @@ hysteresis をそのまま使いつつ、**流す値の側でゲートする**�
 **両側帯＝[hysteresis.js](hysteresis.js) の `makeBand`**：disk/battery が「片側（小さい/大きいほど悪い）」だったのに対し、
 湿度は **「真ん中が幸せ」**——低すぎ（乾燥）も高すぎ（じめじめ）も警戒し、快適帯 [low,high] の中は黙る。状態は
 `low`/`ok`/`high` の三つで、極から戻るには margin だけ余分に戻る（両端にシュミットトリガを置いた格好）＋debounce。
-makeThreshold（片側・enter/exit）の対になる新 factory で、**室温や CO2 にもそのまま再利用できる**（[humidity.js](humidity.js) が初例）。
+makeThreshold（片側・enter/exit）の対になる新 factory。**[humidity.js](humidity.js) が初例・[roomtemp.js](roomtemp.js)（室温）が二例目**で、
+同じ band を意味づけだけ変えて使い回す。注意：**CO2 は band でなく片側**（low 側の害が無い）＝同じ「室内環境」でも量の性質で型が分かれる（[co2.js](co2.js)）。
 **ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
 nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。**CO2 [co2.js](co2.js)** も同型
 （below=false・大きいほど悪い・`TZ_CO2_HIGH` 既定 1000ppm で `co2.stuffy`／`ctx.ppm`）＝湿度が両側だったのに対し

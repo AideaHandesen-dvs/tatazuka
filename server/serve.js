@@ -20,6 +20,7 @@ import { createActivity } from './activity.js';
 import { createHomeAssistant } from '../connectors/home-assistant.js';
 import { createHumidity } from '../connectors/humidity.js';
 import { createCo2 } from '../connectors/co2.js';
+import { createRoomTemp } from '../connectors/roomtemp.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
@@ -51,6 +52,9 @@ const humidityOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && pr
 // CO2（HA の室内 CO2 センサ＝こもり検知）。湿度と並ぶ HA が唯一くれる「部屋の中」の二本目。URL/トークン＋対象 sensor で有効。
 // 接続ごとに作る（しきい値の状態を端末ごとに独立）。揃わなければ createCo2 は null（PE）。README §7-1。
 const co2On = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_CO2);
+// RoomTemp（HA の室温センサ＝快適帯）。湿度・CO2 と並ぶ「部屋の中」三本目。URL/トークン＋対象 sensor で有効。
+// 接続ごとに作る（快適帯の状態を端末ごとに独立）。揃わなければ createRoomTemp は null（PE）。README §7-1。
+const roomtempOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_TEMP);
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
@@ -75,7 +79,7 @@ const resumeOn = !!process.env.TZ_RESUME;
 // Uptime プローブ（連続稼働が長い＝「そろそろ再起動したら?」）。os.uptime() で検知・全OS正規化済み。resume の双子。README §7-1。TZ_UPTIME=1 で有効。
 const uptimeOn = !!process.env.TZ_UPTIME;
 const makeSources = () => [
-  createHomeAssistant(), createHumidity(), createCo2(), createGit(), createDisk(), createMemory(), createNet(), createNic(),
+  createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createGit(), createDisk(), createMemory(), createNet(), createNic(),
   createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
 
@@ -159,6 +163,7 @@ server.listen(PORT, () => {
     hassOn && `Home Assistant（${process.env.TZ_HASS_PERSON}）`,
     humidityOn && `humidity（${process.env.TZ_HASS_HUMIDITY}）`,
     co2On && `co2（${process.env.TZ_HASS_CO2}）`,
+    roomtempOn && `roomtemp（${process.env.TZ_HASS_TEMP}）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',

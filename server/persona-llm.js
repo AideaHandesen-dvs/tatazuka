@@ -85,6 +85,10 @@ const LLM_SITUATIONS = {
   // 室内 CO2（connectors/co2.js が HA CO2 センサのしきい値超えを検知。ctx.ppm に現在の CO2 濃度[ppm]）
   'co2.stuffy':     '部屋の CO2 が高くなり空気がこもっている（眠気・集中力低下）。窓を開けて換気するよう促す',
   'co2.ok':         '換気されて CO2 が下がった。「空気が入れ替わった」とさりげなく認める',
+  // 室温（connectors/roomtemp.js が HA 温度センサの快適帯またぎを検知。ctx.tempC に現在の室温[℃]。屋外天気とは別＝部屋の中）
+  'roomtemp.cold':  '部屋（屋外でなく室内）が寒い。暖房や着込むなど暖まるよう促す',
+  'roomtemp.hot':   '部屋（屋外でなく室内）が暑い。冷房など涼むよう促す。無理しないよう気遣う',
+  'roomtemp.ok':    '室温が快適な範囲に戻った。「過ごしやすくなった」とさりげなく認める',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -234,6 +238,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 室内 CO2（co2.*）：現在の濃度 ppm を添える（「1200ppm、こもってるぞ」のように織り込ませる）
   if (ctx && ctx.ppm != null && (situation === 'co2.stuffy' || situation === 'co2.ok')) {
     s += `\n現在の室内 CO2: ${ctx.ppm} ppm`;
+  }
+  // 室温（roomtemp.*）：現在の室温℃を添える（「室温15℃、冷えすぎだぞ」のように織り込ませる）
+  if (ctx && ctx.tempC != null && (situation === 'roomtemp.cold' || situation === 'roomtemp.hot' || situation === 'roomtemp.ok')) {
+    s += `\n現在の室温: ${ctx.tempC}℃`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
