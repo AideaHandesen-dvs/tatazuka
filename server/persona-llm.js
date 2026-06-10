@@ -95,6 +95,12 @@ const LLM_SITUATIONS = {
   // ドア/窓の開閉（connectors/opening.js が HA binary_sensor の開閉を検知。ctx.what に対象名＝あれば「リビングの窓」等）
   'opening.open':   '窓やドアが開いた。開けっ放しを気遣う（寒い/暑い/防犯）。状況により換気ならむしろ歓迎',
   'opening.closed': '窓やドアが閉まった。さらっと一言（軽く）',
+  // 人感（connectors/motion.js が HA 人感センサ＋滞留で占有/空きを検知。ctx.what に対象名・ctx.quietMin に静かだった分数）
+  'motion.present': '部屋で人の動きを検知した（誰か来た/戻ってきた）。「お、来たか」と気づいて一言',
+  'motion.empty':   '部屋でしばらく動きが無くなった（空になった/静かになった）。さらっと気づく',
+  // 消費電力（connectors/power.js が HA 電力センサのしきい値超えを検知。ctx.watts に現在の電力[W]）
+  'power.high':     '消費電力が高くなった。つけっぱなしの家電がないか気遣う（省エネ・家計）',
+  'power.ok':       '消費電力が下がって落ち着いた。さりげなく認める',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -256,6 +262,17 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // ドア/窓（opening.*）：対象名を添える（「リビングの窓、開いてるぞ」のように織り込ませる）
   if (ctx && ctx.what && (situation === 'opening.open' || situation === 'opening.closed')) {
     s += `\n対象: ${ctx.what}`;
+  }
+  // 人感（motion.*）：present は対象名、empty は静かだった長さ（「30分ぶりに動いたな」のように織り込ませる）
+  if (ctx && ctx.what && situation === 'motion.present') {
+    s += `\n対象: ${ctx.what}`;
+  }
+  if (ctx && ctx.quietMin != null && situation === 'motion.empty') {
+    s += `\n動きが無かった時間: 約${ctx.quietMin} 分`;
+  }
+  // 消費電力（power.*）：現在の電力 W を添える（「800Wも食ってるぞ」のように織り込ませる）
+  if (ctx && ctx.watts != null && (situation === 'power.high' || situation === 'power.ok')) {
+    s += `\n現在の消費電力: ${ctx.watts} W`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

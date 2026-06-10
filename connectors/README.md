@@ -183,9 +183,17 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   **二値遷移＝[home-assistant.js](home-assistant.js)（在席）と完全に同型**（出自が人物の在席でなく開口部の開閉なだけ）。
   `on`＝開／`off`＝閉、初回基準・無変化は黙る。`ctx.what`（friendly_name）で「リビングの窓、開いてるぞ」。
   開けっ放しが気になる開口部（窓/ベランダ）に向ける想定（頻繁に開閉する玄関は賑やかになる＝env で選ぶ）。`TZ_HASS_OPENING` で有効化。
+- [motion.js](motion.js) … **HA の人感センサで部屋の占有/空き**（`motion.present`/`motion.empty`）。生の PIR on/off は
+  チャタるので垂れ流さず、**「最後に動きを見た時刻」を時計で測る滞留タイムアウト**で二状態に均す＝home-assistant
+  （二値遷移）と resume（時計）の**合成**。空→動きで `motion.present`、`TZ_MOTION_EMPTY_S`（既定 600s）動き無しで
+  `motion.empty`。在席（person）・activity（host idle）とは別の角度＝部屋単位の人感。`ctx.what`/`ctx.quietMin`。`TZ_HASS_MOTION` で有効化。
+- [power.js](power.js) … **HA の電力センサで消費電力の high↔ok**（`power.high`/`power.ok`）。片側 below=false（co2 と同系）。
+  `TZ_POWER_HIGH`（既定 500W）超えで `power.high`、戻し 400W で `power.ok`・debounce 3（レンジ/ケトルの瞬間負荷弾き）。
+  全体計に向ければ「今どれだけ食ってるか」、個別プラグに向ければ閾値を下げて「その家電つけっぱ」。`ctx.watts`。`TZ_HASS_POWER` で有効化。
+  限界：今は瞬間値のしきい値で、留守×高電力の「消し忘れ」までは見ていない（在席との合成は将来）。
 - [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）・
-  humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）が分け合う純 IO 部品
-  （`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
+  humidity（湿度）・co2（CO2）・roomtemp（室温）・illuminance（照度）・opening（開閉）・motion（人感）・power（電力）が
+  分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が増えたので一点に寄せた）。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -314,9 +322,11 @@ hysteresis をそのまま使いつつ、**流す値の側でゲートする**�
 makeThreshold（片側・enter/exit）の対になる新 factory。**[humidity.js](humidity.js) が初例・[roomtemp.js](roomtemp.js)（室温）が二例目**で、
 同じ band を意味づけだけ変えて使い回す。注意：**CO2 は band でなく片側**（low 側の害が無い）＝同じ「室内環境」でも量の性質で型が分かれる（[co2.js](co2.js)）。
 
-**「部屋の中」六本（ha.js の上）で判定型が出揃った**：湿度・室温＝両側帯（makeBand）／CO2＝片側 below=false（大きいほど悪い）／
-**[illuminance.js](illuminance.js) 照度＝片側 below=true（小さいほど悪い＝暗い・disk/memory と同系）**／**[opening.js](opening.js) ドア窓＝二値遷移（home-assistant 在席と同型）**。
-HA の同じ REST 読み（ha.js）の上で、量の性質に応じて makeBand / makeThreshold(両向き) / 二値 を選ぶだけ——「センサ＝数値（or 状態）」を situation に翻訳する層が型を吸収している証拠。
+**「部屋の中」八本（ha.js の上）で判定型が出揃った**：湿度・室温＝両側帯（makeBand）／CO2・[power.js](power.js) 電力＝片側 below=false（大きいほど悪い）／
+**[illuminance.js](illuminance.js) 照度＝片側 below=true（小さいほど悪い＝暗い・disk/memory と同系）**／**[opening.js](opening.js) ドア窓＝二値遷移（home-assistant 在席と同型）**／
+**[motion.js](motion.js) 人感＝二値＋滞留タイムアウトの合成（home-assistant の二値 × resume の時計）**。
+HA の同じ REST 読み（ha.js）の上で、量の性質に応じて makeBand / makeThreshold(両向き) / 二値 / 二値＋時計 を選ぶだけ——「センサ＝数値（or 状態）」を situation に翻訳する層が型を吸収している証拠。
+合成型（motion）が出たことで、既存の小部品（二値・時計・しきい値）を**混ぜて**新しい観察を作れることも示せた（新抽象は足していない）。
 **ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
 nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。**CO2 [co2.js](co2.js)** も同型
 （below=false・大きいほど悪い・`TZ_CO2_HIGH` 既定 1000ppm で `co2.stuffy`／`ctx.ppm`）＝湿度が両側だったのに対し

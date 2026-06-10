@@ -23,6 +23,8 @@ import { createCo2 } from '../connectors/co2.js';
 import { createRoomTemp } from '../connectors/roomtemp.js';
 import { createIlluminance } from '../connectors/illuminance.js';
 import { createOpening } from '../connectors/opening.js';
+import { createMotion } from '../connectors/motion.js';
+import { createPower } from '../connectors/power.js';
 import { createGit } from '../connectors/git.js';
 import { createDisk } from '../connectors/disk.js';
 import { createMemory } from '../connectors/memory.js';
@@ -62,6 +64,10 @@ const illuminanceOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN &&
 // Opening（HA の binary_sensor＝ドア/窓の開閉）。二値遷移＝在席と同型。URL/トークン＋対象 entity で有効。
 // いずれも接続ごとに作る（遷移/しきい値の状態を端末ごとに独立）。揃わなければ null（PE）。README §7-1。
 const openingOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_OPENING);
+// Motion（HA の人感センサ＝部屋の占有/空き）。二値＋滞留タイムアウト。URL/トークン＋対象 entity で有効。
+const motionOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_MOTION);
+// Power（HA の電力センサ＝消費電力の high↔ok）。片側 below=false。URL/トークン＋対象 sensor で有効。
+const powerOn = !!(process.env.TZ_HASS_URL && process.env.TZ_HASS_TOKEN && process.env.TZ_HASS_POWER);
 // Git プローブ（未コミットの clean↔dirty）。soft 委譲の第一実装の readonly プローブ（README §7-1）。
 // TZ_GIT_REPO があれば有効。接続ごとに作る（変化検知の状態を端末ごとに独立）。
 const gitOn = !!process.env.TZ_GIT_REPO;
@@ -87,6 +93,7 @@ const resumeOn = !!process.env.TZ_RESUME;
 const uptimeOn = !!process.env.TZ_UPTIME;
 const makeSources = () => [
   createHomeAssistant(), createHumidity(), createCo2(), createRoomTemp(), createIlluminance(), createOpening(),
+  createMotion(), createPower(),
   createGit(), createDisk(), createMemory(), createNet(), createNic(),
   createBattery(), createThermal(), createDownload(), createTrash(), createResume(), createUptime(),
 ].filter(Boolean); // 将来 connector が増えたらここに足す
@@ -174,6 +181,8 @@ server.listen(PORT, () => {
     roomtempOn && `roomtemp（${process.env.TZ_HASS_TEMP}）`,
     illuminanceOn && `illuminance（${process.env.TZ_HASS_LUX}）`,
     openingOn && `opening（${process.env.TZ_HASS_OPENING}）`,
+    motionOn && `motion（${process.env.TZ_HASS_MOTION}）`,
+    powerOn && `power（${process.env.TZ_HASS_POWER}）`,
     gitOn && `git（${process.env.TZ_GIT_REPO}）`,
     diskOn && `disk（${process.env.TZ_DISK_PATH}）`,
     memOn && 'memory',
