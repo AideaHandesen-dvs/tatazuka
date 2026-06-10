@@ -110,7 +110,16 @@ export function createXxx(opts) {
 本体側の仕事。**実装済み**：`server/hub.js` が複数の部屋（ブラウザ端末）を束ね、佇かを一度に一箇所に
 居させ、つつかれた部屋へ移す。物理スタックチャンは**この hub に挿さるもう一つの「部屋（身体）」**に
 なる——表示先の差し替えは、この同じルーティングの上で「どの身体に居るか」を選ぶことに帰着する。
-残るのは実機側（v0 client を喋る物理デバイス）と、サーボ/LED 用の cap 語彙の非破壊拡張だけ。
+
+**出力役の初例が landed＝[stackchan.js](stackchan.js)**（2026-06-10）。実機を待たず、**v0 を喋るヘッドレス client** で
+「別デバイスが部屋として挿さる」を実証した：node 22 のグローバル WebSocket（依存ゼロ）で実 server に繋ぎ、
+hello（`webgl:none`＋サーボ/LED を cap 拡張として正直に申告）→ welcome → presence/say/emote/motion を受け、
+**意味論型語彙を物理駆動コマンド**（mood→LED色+目／act→サーボ pan/tilt／say→口パク）に翻訳して出力する。
+sense（つつき）も返す。実 server 相手の end-to-end で、サーバが**ラベルで呼びかけ**（hub が本物の部屋として
+扱う）・つつき往復（疑い→怒り＋`首を振る`→サーボ pan）まで確認。**駆動部は `makeBody({log})` の純ロジックに
+分離**してあり、実機ファームはこの `log` を実駆動（NeoPixel/servo/speaker）に差し替えるだけで drop-in＝
+**残るのは実機側の配線だけ**で、protocol も hub もこのソフト実証で固まった。サーボ/LED の cap 語彙の正式な
+非破壊拡張（server が cap を見て振る舞いを変えたくなったら）はその時に。
 
 > **OpenClaw は「出力＝身体」ではなく頭脳（決定）**：当初 `OpenCLAW` を表示先のように置いていたが、
 > 実態はエージェント・ランタイム（頭脳）。連携は **向き3（佇か＝指揮役）× soft 委譲** に決まり、
@@ -264,10 +273,14 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   コピーして `read()`/`translate()` を実装すれば新しい入力 connector になる。
 - 各 `*.test.js` … `poll()` の契約（遷移検知・縮退・状態独立・認証）を固定。
 
-**有る（出力の土台）**：
+**有る（出力）**：
 
 - ハブのルーティング（`server/hub.js`）… 佇かを「一度に一箇所」に居させ、つつかれた部屋へ移す
   （protocol §6-1）。物理スタックチャンはここに挿さるもう一つの「部屋＝身体」になる（§3-2）。
+- [stackchan.js](stackchan.js) … **出力役の初例＝v0 を喋るヘッドレス client**（物理スタックチャンの替え玉）。
+  実機なしで「別デバイスが部屋として挿さる」を実 server 相手に end-to-end 実証（§3-2 末尾）。意味論型語彙→物理駆動
+  （LED色/目/サーボ/口パク）の翻訳は `makeBody({log})` の純ロジック＝実機ファームは log を実駆動に差すだけで drop-in。
+  `node connectors/stackchan.js [wss://host:8443/ws]`（自己署名 dev には `NODE_TLS_REJECT_UNAUTHORIZED=0`）。stdin で sense（つつき）も送れる。
 
 **まだ無い（M5 の残り）**：
 
@@ -278,7 +291,9 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   （`git.js` / `disk.js`）。他（ビルド/テスト状態 等）は同じ型に沿って足すだけ。「開いてるファイル」はアクティブ
   ウィンドウ依存で Wayland 不可・プライバシーのため見ない（activity.js と同方針）。open-ended な delegate
   seam（§7-2）は要ると分かってから。
-- **出力**：物理スタックチャン/OpenCLAW を v0 client として喋らせる実機側＋サーボ/LED の cap 語彙拡張（§3-2）。**要実機**。
+- **出力**：**ソフトの替え玉（[stackchan.js](stackchan.js)）で継ぎ目は landed・実証済み**（§3-2 末尾）。残るのは実機側の配線
+  （`makeBody` の log を NeoPixel/servo/speaker の実駆動に差す）と、server が cap を見て振る舞いを変えたくなったときの
+  サーボ/LED cap 語彙の正式な非破壊拡張だけ。**要実機なのはこの最後の物理配線のみ**で、protocol・hub・翻訳ロジックは固まった。
 
 ```sh
 node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ）
