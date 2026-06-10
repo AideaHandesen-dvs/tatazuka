@@ -21,7 +21,7 @@
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
 | **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ **Linux＋macOS＋Windows 全 landed**（各実機で起動＋クラッシュ自動復活を実証／上表） |
-| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | ⬜ まだ。今は手順を**手で**踏む |
+| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟡 **計画確定**（ワンライナー導入＝署名の壁を回避・下節）。実装は Linux `install.sh` 先行でこれから。今はまだ手順を手で踏む |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
 ②の前提——node を入れる・repo を持ってくる・HTTPS 証明書を作る——は、各 OS 節の「前提」に手順として
@@ -43,6 +43,61 @@ prebuilt tarball で置き・repo を rsync で送り・証明書を openssl で
 - **秘密は unit/plist に書かず env ファイルへ逃がす**（`TZ_HASS_TOKEN` / `ANTHROPIC_API_KEY` 等）。
 - **env が無くても起動する**（ルールベースで喋る＝プログレッシブ・エンハンスメント）。
 - リポジトリは `~/tatazuka` に clone されている前提（リポ名・`server/` パスは改名禁止＝systemd 化の布石）。
+
+---
+
+## 層② の落とし所：ワンライナー導入（署名の壁を回避する）
+
+層②（エンドユーザー導入）の方針を決めた。**三 OS とも「リモートスクリプトをワンライナーで流す」形**に揃える。
+①の自動起動ユニットが三 OS landed したので、②は「前提（node・repo・証明書）を一発で揃え、①のユニットを
+登録して起動する」だけに絞れている。
+
+```
+Linux/macOS :  curl -fsSL https://raw.githubusercontent.com/AideaHandesen-dvs/tatazuka/main/install.sh | bash
+Windows     :  irm https://raw.githubusercontent.com/AideaHandesen-dvs/tatazuka/main/install.ps1 | iex
+```
+
+各スクリプトの骨は同じ：**node を用意 → repo 取得 → 証明書を作る → 自動起動ユニットを登録（①）→ 起動**。
+OS 差は「どのユニットか（systemd/launchd/Task Scheduler）」「node の入れ方」「FW 開放の有無」だけ。
+
+### なぜこれが正解か：署名の壁を構造的に避けられる
+
+- **`.dmg`/`.exe` を配ると署名の壁に当たる**：macOS は Gatekeeper（公証＝Apple Developer **年 $99** が要る）、
+  Windows は SmartScreen（コード署名証明書＝有償）。これらは**「ダウンロードされた実行物／アプリバンドル」**に
+  対して LaunchServices / SmartScreen が付ける検疫で発動する。
+- **`curl|bash` / `irm|iex` はそこを通らない**：パイプに流したスクリプトは「DL された実行物」としてディスクに
+  落ちないので検疫が付かない＝Gatekeeper も SmartScreen も発動しない。`curl` は quarantine 属性を付けないので、
+  スクリプトが落としてくる node バイナリも警告なしで実行できる（Homebrew / nvm / rustup が mac で無警告に動くのと同じ理）。
+- **つまり佇かは $99 もコード署名も要らない**。署名が要るのは「ダブルクリックの `.dmg`/`.exe`」という見た目の
+  化粧だけで、佇かは**裏で常駐するサーバ（開く窓が無い）**だからそれ自体が不要（各 OS 節の「配布メモ」参照）。
+  磨いた `.dmg`/`.exe` は将来のオプション＝署名コストを払う気になったときだけ。
+
+### ホスティングは GitHub だけで足りる
+
+install スクリプトも node も repo tarball も **GitHub が無料で配る**（`raw.githubusercontent.com` ＋ Releases）。
+独自ドメインもサーバも要らない。`curl|bash` の「中身を読まずに実行するのか」という作法批判には、(1) README に
+「**流す前に読め**」と URL を素で示す、(2) スクリプトを短く・読めるまま保つ、で応える。
+
+### 本当の山は「証明書を見る端末に信頼させる」方（OS 非依存）
+
+パッケージング（ワンライナー）は実は谷で、**非開発者がスマホ/タブレットで佇かに繋ぐ**ところが摩擦の本体。
+表示には HTTPS が要る（`DeviceOrientation` / `getUserMedia` の制約・README §6）が、サーバ証明書を**見る側の
+端末**に信頼させる一手が要る。installer に切り替えスイッチを持たせる方針：
+
+- **`--mkcert`（依存ゼロ寄り）**：ローカル CA を作って server 証明書を発行。**見る端末ごとに CA を入れる**
+  必要がある（iOS は構成プロファイル＋設定で有効化＝一回だが痛い）。
+- **`--tailscale`（摩擦ゼロ寄り）**：Tailscale Serve で tailnet ホスト名に**本物の Let's Encrypt 証明書**＝
+  ブラウザ警告ゼロ。ただし server と端末の両方に Tailscale を要する依存。
+- 自己署名のみは iOS が `DeviceOrientation` を拒否＝実質不可。フォールバックとしてのみ。
+
+落とし所は **「楽さ最優先＝Tailscale Serve／依存ゼロ最優先＝mkcert」の二段**。ここが②設計の山で、
+パッケージングは谷——という温度で進める。
+
+### 実装順（①と同じ Linux 先行）
+
+1. **Linux `install.sh`**（署名の壁が無い＝型を最速で立てられる。証明書サブ問題もここで解く）。
+2. macOS（同じ `install.sh` に launchd 分岐を足す。Gatekeeper 不要をこの形で実証）。
+3. Windows `install.ps1`（ラボの `irm|iex` 経路がそのまま本番の導線。FW 開放に admin 一回）。
 
 ---
 
