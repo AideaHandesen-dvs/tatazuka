@@ -141,7 +141,9 @@ weather/activity と同型（fetch 注入・PE縮退・遷移検知）で、prot
 - **env**：`TZ_HASS_URL`（例 `http://homeassistant.local:8123`）／`TZ_HASS_TOKEN`（長期アクセストークン）／
   `TZ_HASS_PERSON`（対象 entity 例 `person.john`）。**三つ揃わなければ connector オフ（PE）**。
 - **拡張**：複数 entity・ドア/照明/温度などは situation を足す形で（この型を増やす）。HA は REST が
-  枯れているので fetch 一本で足り、依存ゼロを崩さない。
+  枯れているので fetch 一本で足り、依存ゼロを崩さない。**第一の拡張＝[humidity.js](humidity.js)**（HA の
+  `sensor.*` を読む室内湿度の快適帯）。REST の読み（認証・URL・PE）は [ha.js](ha.js) に共有し、在席（状態文字列）と
+  湿度（数値の両側しきい値）で**意味論だけ分けた**——「天気でなく部屋の中」という HA が唯一くれる価値を取りにいく初例。
 
 ```sh
 TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=person.john \
@@ -156,7 +158,14 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
 **有る**：
 
 - この設計メモ（二つの契約の所在を確定）。
-- [home-assistant.js](home-assistant.js) … **入力役の初例**（在宅/外出）。behavior.js の `sources` 配線込み。
+- [home-assistant.js](home-assistant.js) … **入力役の初例**（在宅/外出・`person.*`/`device_tracker.*`）。behavior.js の `sources` 配線込み。
+- [humidity.js](humidity.js) … **HA の sensor.* を読む入力役の初例＝室内湿度の快適帯**（`humidity.dry`/`humidity.humid`/`humidity.ok`）。
+  Open-Meteo の外気では知れない「部屋の中」を HA から拾う（HA が唯一くれる価値）。**両側しきい値（快適帯）の初例**——
+  低すぎ（乾燥）も高すぎ（じめじめ）も警戒し、`TZ_HUMIDITY_LOW`〜`TZ_HUMIDITY_HIGH`（既定 40〜60）の帯は黙る（`makeBand`）。
+  `ctx.pct` を LLM が織り込む。`TZ_HASS_URL`＋`TZ_HASS_TOKEN`（在席と共有）＋`TZ_HASS_HUMIDITY`（対象 sensor）で有効化。
+  HA REST の読みは [ha.js](ha.js) に共有（home-assistant と分け合う）。センサが無ければ黙る（PE）。
+- [ha.js](ha.js) … HA REST（`GET /api/states/<entity>`・トークン認証・PE 縮退）の**共有リーダ**。home-assistant（在席）と
+  humidity（湿度）が分け合う純 IO 部品（`run.js`/`hysteresis.js` と同列＝消費者が二本になったので一点に寄せた）。
 - [git.js](git.js) … **soft 委譲の第一実装の readonly プローブ**（未コミット clean↔dirty ＋未 push unpushed↔pushed・§7-1）。
   `git status --porcelain=v2 --branch` を readonly で読み、`git.dirty`/`git.clean`/`git.unpushed`/`git.pushed` を投げる。`TZ_GIT_REPO` で有効化。
 - [disk.js](disk.js) … **しきい値型の readonly プローブ**（空き容量の low↔ok・§7-1）。`df` を読み、
@@ -276,9 +285,13 @@ HA・git と同じ素の二値遷移。`net.online` で `ctx.iface`（経路）�
 二閾値・帯の中は維持）②**スパイク**（一瞬だけ跨ぐ）→ **デバウンス**（N 連続で確定）。`makeThreshold` が
 両方を持ち、disk は debounce=1（容量はゆっくり）、memory は debounce=3（30 秒 tick で約 90 秒の継続）、
 nic は below=false＋debounce=2。これで遷移型は **二値（git/HA/net）／即時しきい値（disk）／デバウンス
-しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）／温度（thermal）** が揃った。battery は
+しきい値（memory）／レート（nic）／ゲート付きしきい値（battery）／温度（thermal）／両側帯（湿度）** が揃った。battery は
 hysteresis をそのまま使いつつ、**流す値の側でゲートする**（放電中=実値・充電中=安全値）ことでブール条件を
 別レイヤを足さずに型へ畳み込んだ例。thermal は最大ゾーン＋両方向デバウンスの below=false 型。
+**両側帯＝[hysteresis.js](hysteresis.js) の `makeBand`**：disk/battery が「片側（小さい/大きいほど悪い）」だったのに対し、
+湿度は **「真ん中が幸せ」**——低すぎ（乾燥）も高すぎ（じめじめ）も警戒し、快適帯 [low,high] の中は黙る。状態は
+`low`/`ok`/`high` の三つで、極から戻るには margin だけ余分に戻る（両端にシュミットトリガを置いた格好）＋debounce。
+makeThreshold（片側・enter/exit）の対になる新 factory で、**室温や CO2 にもそのまま再利用できる**（[humidity.js](humidity.js) が初例）。
 **ゴミ箱 [trash.js](trash.js)** も同じ below=false の件数しきい値（掃除ナッジ・`ctx.n`）で、型としては
 nic/thermal と同系——「机に座る人全員」向けの観察をしきい値型で増やした一本。
 

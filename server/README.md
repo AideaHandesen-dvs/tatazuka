@@ -271,6 +271,7 @@ DISPLAY=:0 node server/serve.js          # 5 分席を外す → desk.away、戻
 | プローブ | 有効化する env | 何を見る | situation |
 |---|---|---|---|
 | **Home Assistant** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_PERSON` | HA の在席（`person.*`/`device_tracker.*`） | `home.back` / `home.away` |
+| **humidity** | `TZ_HASS_URL` ＋ `TZ_HASS_TOKEN` ＋ `TZ_HASS_HUMIDITY`（＋`TZ_HUMIDITY_LOW`/`HIGH` 既定 40/60） | HA の室内湿度（`sensor.*`・両側しきい値＝快適帯） | `humidity.dry` / `humidity.humid` / `humidity.ok` |
 | **git** | `TZ_GIT_REPO`（監視リポのパス） | 未コミット・未 push（`git status --porcelain=v2 --branch`） | `git.dirty`/`git.clean`・`git.unpushed`/`git.pushed` |
 | **disk** | `TZ_DISK_PATH`（＋`TZ_DISK_MIN_PCT` 既定 10） | 空き容量（`df`・しきい値） | `disk.low` / `disk.ok` |
 | **memory** | `TZ_MEM=1`（＋`TZ_MEM_MIN_PCT` 既定 10） | 空きメモリ（`/proc/meminfo`・デバウンス付き） | `mem.low` / `mem.ok` |

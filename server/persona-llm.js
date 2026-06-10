@@ -78,6 +78,10 @@ const LLM_SITUATIONS = {
   'resume.back':    'PC がスリープ（休止）から復帰した。「おかえり」と出迎える',
   // 連続稼働（connectors/uptime.js が os.uptime() のしきい値超えを検知。ctx.days に連続稼働日数・ctx.hours に時間）
   'uptime.long':    'PC を何日も再起動せず動かしっぱなしになっている。たまには再起動して休ませるよう促す',
+  // 室内湿度（connectors/humidity.js が HA 湿度センサの快適帯またぎを検知。ctx.pct に現在の湿度%）
+  'humidity.dry':   '部屋の空気が乾燥している。喉や肌、風邪に気をつけて（加湿など）と促す',
+  'humidity.humid': '部屋がじめじめ湿気ている。換気やカビに気をつけるよう促す',
+  'humidity.ok':    '湿度が快適な範囲に戻った。「過ごしやすくなった」とさりげなく認める',
   // 天気（ctx.weather に今の空模様・気温が入る。それを踏まえて一言）
   'weather.morning':   '朝。窓の外の天気を一言そえて挨拶する',
   'weather.rain.start':'さっきまで降っていなかったのに、雨が降りだした',
@@ -219,6 +223,10 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   // 連続稼働（uptime.long）：稼働日数・時間を添える（「もう8日もつけっぱなしだぞ」のように織り込ませる）
   if (ctx && ctx.hours != null && situation === 'uptime.long') {
     s += `\n連続稼働: 約${ctx.days} 日（${ctx.hours} 時間）`;
+  }
+  // 室内湿度（humidity.*）：現在の湿度%を添える（「湿度30%、乾きすぎだぞ」のように織り込ませる）
+  if (ctx && ctx.pct != null && (situation === 'humidity.dry' || situation === 'humidity.humid' || situation === 'humidity.ok')) {
+    s += `\n現在の室内湿度: ${ctx.pct}%`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

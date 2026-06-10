@@ -12,39 +12,22 @@
 //
 // 監視対象は person.* / device_tracker.*。状態は home / not_home / ゾーン名（"Work" 等）を取り得る。
 // home 以外はすべて「外出」とみなす＝ゾーン間移動（not_home→Work）は外出のままなので発話しない。
-// 複数 entity・ドア/照明などへの拡張は situation を足す形で（この型を増やす）。
+// 複数 entity・ドア/照明などへの拡張は situation を足す形で（この型を増やす）。HA の sensor.*（数値）を
+// 読む拡張は humidity.js（室内湿度の快適帯）が初例＝REST の読みは ha.js に共有して各 connector に分けた。
+
+import { makeHassReader } from './ha.js';
 
 const HOME = 'home'; // HA の在宅状態。これ以外は外出扱い
 
 // env / opts を見て connector を作る。前提が欠ければ null（＝この connector はオフ＝PE）。
 // opts.fetch / opts.url / opts.token / opts.entity / opts.env はテスト・直接指定用。
+// HA REST の読み（認証・URL・PE）は ha.js に共有（humidity.js と分け合う）。対象は TZ_HASS_PERSON。
 export function createHomeAssistant(opts) {
-  opts = opts || {};
-  const e = opts.env || process.env;
-  const fetchImpl = opts.fetch || globalThis.fetch;
-  const base = (opts.url || e.TZ_HASS_URL || '').replace(/\/+$/, ''); // 末尾スラッシュを正規化
-  const token = opts.token || e.TZ_HASS_TOKEN;
-  const entity = opts.entity || e.TZ_HASS_PERSON;
-
-  // PE：接続先・認証・対象のどれかが欠ければ connector オフ
-  if (!base || !token || !entity || typeof fetchImpl !== 'function') return null;
+  const read = makeHassReader(opts, 'TZ_HASS_PERSON');
+  if (!read) return null; // 接続先・認証・対象・fetch のどれかが欠けた → connector オフ（PE）
 
   let primed = false;
   let wasHome;  // 直前の在宅状態（遷移検知の状態。接続ごとに独立＝各端末が反応）
-
-  // HA REST：GET /api/states/<entity>。読めなければ null（黙る＝PE）。
-  async function read() {
-    try {
-      const r = await fetchImpl(`${base}/api/states/${encodeURIComponent(entity)}`, {
-        headers: { authorization: `Bearer ${token}` },
-      });
-      if (!r || !r.ok) return null;
-      const j = await r.json();
-      return j && typeof j.state === 'string' ? j : null;
-    } catch {
-      return null; // HA 不達 → 黙る
-    }
-  }
 
   return {
     async poll() {
