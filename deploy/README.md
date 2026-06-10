@@ -21,7 +21,7 @@
 | 層 | 何をするか | ここでの状態 |
 |---|---|---|
 | **① 自動起動ユニット**（OS別） | 既に用意された佇か本体を、OS の仕組みで黙って起動・自動再起動・ログイン/起動時に立ち上げる | ✅ **Linux＋macOS＋Windows 全 landed**（各実機で起動＋クラッシュ自動復活を実証／上表） |
-| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟢 **三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall。署名不要を実証）。残るは証明書の `--tailscale`（警告ゼロ化）と実機スマホでの信頼テスト（下節） |
+| **② エンドユーザー導入**（installer / bootstrap） | 前提（node ランタイム・repo 取得・証明書）を**一発で**揃え、①のユニットを登録する | 🟢 **三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall。署名不要を実証）。証明書は openssl／`--mkcert`／`--tailscale`（本物 LE・警告ゼロ）の三段すべて実装済（下節）。残るは実機スマホでの信頼テスト（要ユーザー） |
 
 ①が証明したのは「**plist / unit を置けば serve.js が自動で立ち上がり、落ちても復活する**」ことだけ。
 ②の前提——node を入れる・repo を持ってくる・HTTPS 証明書を作る——は、各 OS 節の「前提」に手順として
@@ -97,8 +97,8 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
 
 1. **Linux `install.sh`** ✅ **landed**（2026-06-10・クリーン実機 vindalfr で実証：node 不在→prebuilt 取得→
    `git clone`→openssl 自己署名→systemd user ユニット登録→**HTTPS 200**。冪等＝再実行で node 再利用・証明書
-   保持・再起動。`--uninstall`/`--mkcert`/`--port`/`--branch` 付き）。証明書サブ問題は openssl（無印）と
-   `--mkcert` まで実装、`--tailscale` は近日。
+   保持・再起動。`--uninstall`/`--mkcert`/`--tailscale`/`--port`/`--branch` 付き）。証明書サブ問題は
+   openssl（無印）・`--mkcert`・`--tailscale` の三段すべて実装済。
 2. **macOS** ✅ **landed**（2026-06-10・同じ `install.sh` の launchd 分岐。実機 osx-kvm/Catalina で実証：
    node18 reuse→**LibreSSL 2.8.3 で config 方式 SAN 証明書**（`-addext` 非対応を回避）→launchd bootstrap→
    **HTTPS 200**→bootout。Gatekeeper は `curl|bash` 経由で一切出ず＝**$99 不要を実証**）。自己署名は iOS の
@@ -108,7 +108,16 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
    `schtasks /Run`→**HTTPS 200**（node クライアント）→`-Uninstall`。FW 開放は admin 時のみ・無ければ localhost）。
    `irm|iex` 経由なら SmartScreen も出ない＝**署名不要を実証**。
 
-残りは **`--tailscale`**（証明書のボス＝見る端末で警告ゼロにする本物の Let's Encrypt パス）。
+4. **`--tailscale`**（証明書のボス＝見る端末で警告ゼロにする本物の Let's Encrypt パス）✅ **三 OS 実装**
+   （2026-06-10・`install.sh`＝Linux/macOS／`install.ps1`＝Windows）。佇か自身は**自己署名 HTTPS のまま**
+   （serve.js 無改修）、Tailscale が前段で TLS 終端し、自己署名バックエンドへは `https+insecure://localhost:$PORT`
+   で繋ぐ＝**見る端末のブラウザは本物の LE で警告ゼロ**。`tailscale serve --bg`（旧 CLI は `serve https:443 /`
+   へフォールバック）で常駐、`--uninstall` で `serve --https=443 off`（無ければ `serve reset`）して撤去。
+   tailnet FQDN は `tailscale status --json` の `Self.DNSName` を node で抜いて最終 URL に出す。
+   **前提＝server 側で `tailscale up` 済み**（未ログインなら導入時に止めて誘導）。teardown の no-op・DNSName 抽出
+   までは検証済。**残る実 e2e（実 tailnet で別端末から警告ゼロ確認）は `tailscale up` 認証＋見る端末が要る＝要ユーザー**。
+
+依存ゼロ寄り（`--mkcert`）と摩擦ゼロ寄り（`--tailscale`）の二段がこれで揃った。
 
 ---
 

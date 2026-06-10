@@ -12,12 +12,14 @@
 # オプション（引数で渡す。irm|iex 経由なら: & ([scriptblock]::Create((irm <url>))) --mkcert 等）：
 #   -ForceCert      既存の証明書を作り直す
 #   -Openssl        証明書を openssl で（既定は mkcert）
+#   -Tailscale      Tailscale Serve で tailnet ホスト名に本物の Let's Encrypt（端末で警告ゼロ・要 tailscale up）
 #   -Port <N>       待受ポート（既定 8443）
 #   -Branch <name>  取得する git ブランチ（既定 main）
 #   -Uninstall      タスクを止めて外す（repo/証明書/env は残す）
 param(
   [switch]$ForceCert,
   [switch]$Openssl,
+  [switch]$Tailscale,
   [int]$Port = 8443,
   [string]$Branch = 'main',
   [switch]$Uninstall
@@ -36,11 +38,28 @@ function Say ($m){ Write-Host "佇か $m" -ForegroundColor Cyan }
 function Warn($m){ Write-Host "佇か $m" -ForegroundColor Yellow }
 function Die ($m){ Write-Host "佇か NG $m" -ForegroundColor Red; exit 1 }
 
+# ---- Tailscale Serve（-Tailscale）：tatazuka は自己署名 HTTPS のまま、Tailscale が前段で本物の LE を被せる ----
+function TsBin {
+  $c = (Get-Command tailscale.exe -ErrorAction SilentlyContinue).Source
+  if($c){ return $c }
+  $p = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+  if(Test-Path $p){ return $p }
+  return $null
+}
+function TsTeardown {
+  $ts = TsBin; if(-not $ts){ return }
+  $eap=$ErrorActionPreference;$ErrorActionPreference='Continue'
+  & $ts serve --https=443 off 2>&1 | Out-Null
+  if($LASTEXITCODE -ne 0){ & $ts serve reset 2>&1 | Out-Null }
+  $ErrorActionPreference=$eap
+}
+
 # ---- uninstall ----
 if($Uninstall){
   schtasks /End /TN $TaskName 2>&1 | Out-Null
   schtasks /Delete /TN $TaskName /F 2>&1 | Out-Null
   Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*\tatazuka\*" -or $_.Path -like "*\opt\node\*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+  TsTeardown   # -Tailscale で設定してた場合だけ効く（無ければ no-op）
   Say "タスクを外した。repo（$Repo）・証明書・env は残してある（消すなら手で）。"
   exit 0
 }
@@ -179,9 +198,36 @@ req.on('error',e=>console.log('ERR='+e.message));req.on('timeout',()=>{console.l
 $r = (& $NodeExe $cli $Port 2>&1 | Out-String).Trim()
 if($r -like 'STATUS=200*'){ Say "起動確認 OK（HTTPS $r）" } else { Warn "起動未確認（$r）。ログ: $env:USERPROFILE\.config\tatazuka\tatazuka.log" }
 
+# Tailscale Serve（-Tailscale）：ローカル起動が立った後に前段プロキシを張る。
+$tsName = $null
+if($Tailscale){
+  $ts = TsBin
+  if(-not $ts){ Die "tailscale が無い。先に Tailscale を入れて 'tailscale up' で tailnet に参加して（https://tailscale.com/download）。" }
+  & $ts status 2>&1 | Out-Null
+  if($LASTEXITCODE -ne 0){ Die "tailscale にログインしてない。'$ts up' を実行してから流し直して。" }
+  Say "Tailscale Serve を設定（ローカル :$Port へプロキシ・tailnet に本物の Let's Encrypt）"
+  $eap=$ErrorActionPreference;$ErrorActionPreference='Continue'
+  & $ts serve --bg "https+insecure://localhost:$Port" 2>&1 | Out-Null
+  if($LASTEXITCODE -ne 0){ & $ts serve https:443 / "https+insecure://localhost:$Port" 2>&1 | Out-Null }
+  $rc=$LASTEXITCODE;$ErrorActionPreference=$eap
+  if($rc -ne 0){ Die "tailscale serve に失敗。'$ts serve status' を確認して。" }
+  # tailnet FQDN を status --json から node で抜く
+  $tj = Join-Path $env:TEMP 'tzts.js'
+  @'
+let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const n=((JSON.parse(s).Self||{}).DNSName||"").replace(/\.$/,"");if(n)console.log(n);}catch(e){}});
+'@ | Set-Content $tj -Encoding ASCII
+  $tsName = ((& $ts status --json 2>$null | Out-String) | & $NodeExe $tj 2>$null | Out-String).Trim()
+}
+
 Write-Host ""
-Say "佇か、常駐開始。見る端末のブラウザから↓へ（同じ LAN）："
-Write-Host "       https://$hn.local`:$Port/" -ForegroundColor White
+if($Tailscale){
+  Say "佇か、常駐開始。tailnet のどの端末からでも↓へ（本物の証明書・警告ゼロ）："
+  if($tsName){ Write-Host "       https://$tsName/" -ForegroundColor White }
+  else { Write-Host "       https://<your-tailnet-host>/   （'tailscale serve status' で確認）" -ForegroundColor White }
+} else {
+  Say "佇か、常駐開始。見る端末のブラウザから↓へ（同じ LAN）："
+  Write-Host "       https://$hn.local`:$Port/" -ForegroundColor White
+}
 Say "ログ: Get-Content `$env:USERPROFILE\.config\tatazuka\tatazuka.log -Tail 20 -Wait"
 Say "外す: irm https://raw.githubusercontent.com/$RepoSlug/main/deploy/install.ps1 | iex   （に -Uninstall）"
 exit 0

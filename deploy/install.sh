@@ -9,7 +9,7 @@
 #
 # オプション：
 #   --mkcert       ローカル CA で証明書（見る端末に CA を入れれば警告ゼロ。mkcert は無ければ取得）
-#   --tailscale    Tailscale Serve（近日）
+#   --tailscale    Tailscale Serve で tailnet ホスト名に本物の Let's Encrypt（端末で警告ゼロ・要 tailscale up）
 #   --force-cert   既存の証明書を作り直す
 #   --port N       待受ポート（既定 8443）
 #   --branch NAME  取得する git ブランチ（既定 main）
@@ -36,6 +36,35 @@ c_say='\033[1;36m'; c_warn='\033[1;33m'; c_err='\033[1;31m'; c_0='\033[0m'
 say(){ printf "${c_say}佇か${c_0} %s\n" "$*"; }
 warn(){ printf "${c_warn}佇か${c_0} %s\n" "$*" >&2; }
 die(){ printf "${c_err}佇か NG${c_0} %s\n" "$*" >&2; exit 1; }
+
+# ---- Tailscale Serve（--tailscale）：tailnet ホスト名に本物の Let's Encrypt を被せる ----
+# 佇か自身は自己署名の HTTPS のまま（serve.js は無改修）。Tailscale が前段で TLS 終端し、
+# 自己署名バックエンドへは https+insecure で繋ぐ＝見る端末のブラウザは警告ゼロ（本物 LE）。
+ts_bin(){
+  if command -v tailscale >/dev/null 2>&1; then echo tailscale; return 0; fi
+  [ -x /Applications/Tailscale.app/Contents/MacOS/Tailscale ] && { echo /Applications/Tailscale.app/Contents/MacOS/Tailscale; return 0; }
+  return 1
+}
+ts_dnsname(){   # 自分の tailnet FQDN（末尾ドット除去）。取れなければ空。
+  local ts; ts="$(ts_bin)" || return 1
+  "$ts" status --json 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{const n=((JSON.parse(s).Self||{}).DNSName||"").replace(/\.$/,"");if(n)console.log(n);}catch(e){}})' 2>/dev/null
+}
+tailscale_serve_setup(){
+  local ts; ts="$(ts_bin)" || die "tailscale が無い。先に Tailscale を入れて 'tailscale up' で tailnet に参加して（https://tailscale.com/download）。"
+  "$ts" status >/dev/null 2>&1 || die "tailscale にログインしてない。'$ts up' を実行してから流し直して。"
+  say "Tailscale Serve を設定（ローカル :$PORT へプロキシ・tailnet に本物の Let's Encrypt）"
+  local err; err="$(mktemp)"
+  if ! "$ts" serve --bg "https+insecure://localhost:$PORT" 2>"$err"; then
+    # 旧 CLI（--bg 非対応）へフォールバック
+    "$ts" serve https:443 / "https+insecure://localhost:$PORT" 2>>"$err" \
+      || { cat "$err" >&2; rm -f "$err"; die "tailscale serve に失敗。'$ts serve status' を確認して。"; }
+  fi
+  rm -f "$err"
+}
+tailscale_serve_teardown(){
+  local ts; ts="$(ts_bin)" || return 0
+  "$ts" serve --https=443 off >/dev/null 2>&1 || "$ts" serve reset >/dev/null 2>&1 || true
+}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -99,6 +128,7 @@ unit_uninstall(){
 
 if [ "$DO_UNINSTALL" = 1 ]; then
   unit_uninstall
+  tailscale_serve_teardown   # --tailscale で設定してた場合だけ効く（無ければ no-op）
   say "ユニットを外した（$OS）。repo（$REPO_DIR）・証明書・env は残してある（消すなら手で）。"
   exit 0
 fi
@@ -164,7 +194,6 @@ if [ -f "$CERTS/cert.pem" ] && [ -f "$CERTS/key.pem" ] && [ "$FORCE_CERT" = 0 ];
   say "証明書は既存を使う（作り直すなら --force-cert）"
 else
   case "$CERT_MODE" in
-    tailscale) die "--tailscale はこれから。今は無印（openssl）か --mkcert で。" ;;
     mkcert)
       if ! command -v mkcert >/dev/null 2>&1; then
         case "$(uname -m)" in x86_64) ma=amd64;; aarch64|arm64) ma=arm64;; *) die "mkcert 未対応 arch";; esac
@@ -178,7 +207,8 @@ else
       mkcert -install >/dev/null 2>&1 || warn "mkcert -install に失敗（CA 未登録でも server 証明書は作る）"
       mkcert -cert-file "$CERTS/cert.pem" -key-file "$CERTS/key.pem" localhost 127.0.0.1 ::1 "$hn" "$hn.local"
       ;;
-    openssl)
+    openssl|tailscale)
+      # tailscale モードもここ：Tailscale が前段で本物の LE を被せるので、バックエンドは自己署名で十分。
       command -v openssl >/dev/null 2>&1 || die "openssl が無い（--mkcert を使うか openssl を入れて）"
       # SAN は config ファイル方式（LibreSSL 2.8.3＝-addext 非対応 でも通る portable な書き方）。
       # 有効期間は 397 日（Apple platform の 398 日上限に合わせる＝iOS/Safari で弾かれない）。
@@ -223,6 +253,9 @@ fi
 # ============================ 5) ユニット登録＆起動 ============================
 unit_install
 
+# Tailscale Serve（--tailscale）：ローカル起動が立った後に前段プロキシを張る。
+[ "$CERT_MODE" = tailscale ] && tailscale_serve_setup
+
 # ============================ 6) 確認 ============================
 sleep 2
 code="$(curl -sk -o /dev/null -w '%{http_code}' "https://localhost:$PORT/" 2>/dev/null || echo 000)"
@@ -231,10 +264,17 @@ if [ "$code" = 200 ]; then say "起動確認 OK（HTTPS $code）"; else
   [ "$OS" = linux ] && warn "  ログ: journalctl --user -u tatazuka -e" || warn "  ログ: tail ~/Library/Logs/tatazuka.log"
 fi
 echo
-say "佇か、常駐開始。見る端末のブラウザから↓へ（同じ LAN）："
-printf "       \033[1mhttps://%s.local:%s/\033[0m\n" "$hn" "$PORT"
+if [ "$CERT_MODE" = tailscale ]; then
+  tsname="$(ts_dnsname || true)"
+  say "佇か、常駐開始。tailnet のどの端末からでも↓へ（本物の証明書・警告ゼロ）："
+  if [ -n "${tsname:-}" ]; then printf "       \033[1mhttps://%s/\033[0m\n" "$tsname"
+  else printf "       \033[1mhttps://<your-tailnet-host>/\033[0m  （'%s serve status' で確認）\n" "$(ts_bin || echo tailscale)"; fi
+else
+  say "佇か、常駐開始。見る端末のブラウザから↓へ（同じ LAN）："
+  printf "       \033[1mhttps://%s.local:%s/\033[0m\n" "$hn" "$PORT"
+fi
 if [ "$OS" = linux ]; then say "ログ: journalctl --user -u tatazuka -f ／ ログアウト後も常駐: loginctl enable-linger \$USER"
 else say "ログ: tail -f ~/Library/Logs/tatazuka.log"; fi
 say "外す: bash <(curl -fsSL https://raw.githubusercontent.com/${REPO_SLUG}/main/deploy/install.sh) --uninstall"
-[ "$CERT_MODE" = openssl ] && say "※ 自己署名なので端末に証明書警告が出る。警告ゼロにするなら --mkcert（端末に CA を入れる）。"
+[ "$CERT_MODE" = openssl ] && say "※ 自己署名なので端末に証明書警告が出る。警告ゼロにするなら --mkcert（端末に CA を入れる）か --tailscale（本物の LE・要 tailscale up）。"
 exit 0
