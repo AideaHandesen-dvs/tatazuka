@@ -207,10 +207,17 @@ if($Tailscale){
   if($LASTEXITCODE -ne 0){ Die "tailscale にログインしてない。'$ts up' を実行してから流し直して。" }
   Say "Tailscale Serve を設定（ローカル :$Port へプロキシ・tailnet に本物の Let's Encrypt）"
   $eap=$ErrorActionPreference;$ErrorActionPreference='Continue'
-  & $ts serve --bg "https+insecure://localhost:$Port" 2>&1 | Out-Null
-  if($LASTEXITCODE -ne 0){ & $ts serve https:443 / "https+insecure://localhost:$Port" 2>&1 | Out-Null }
+  $so = (& $ts serve --bg "https+insecure://localhost:$Port" 2>&1 | Out-String)
+  if($LASTEXITCODE -ne 0){ $so = (& $ts serve https:443 / "https+insecure://localhost:$Port" 2>&1 | Out-String) }
   $rc=$LASTEXITCODE;$ErrorActionPreference=$eap
-  if($rc -ne 0){ Die "tailscale serve に失敗。'$ts serve status' を確認して。" }
+  if($rc -ne 0){
+    # serve config は権限が要る（tailscaled の設定変更）。原因別に誘導。
+    if($so -match 'denied|operator|permission'){
+      Die "serve 設定に権限が要る。管理者 PowerShell で流し直すか、一度だけ 'tailscale set --operator=$env:USERNAME' を実行して。"
+    }
+    Write-Host $so
+    Die "tailscale serve に失敗（上を参照。'Serve is not enabled' なら表示の URL を admin で開いて有効化）。"
+  }
   # tailnet FQDN を status --json から node で抜く
   $tj = Join-Path $env:TEMP 'tzts.js'
   @'

@@ -114,10 +114,22 @@ install スクリプトも node も repo tarball も **GitHub が無料で配る
    で繋ぐ＝**見る端末のブラウザは本物の LE で警告ゼロ**。`tailscale serve --bg`（旧 CLI は `serve https:443 /`
    へフォールバック）で常駐、`--uninstall` で `serve --https=443 off`（無ければ `serve reset`）して撤去。
    tailnet FQDN は `tailscale status --json` の `Self.DNSName` を node で抜いて最終 URL に出す。
-   **前提＝server 側で `tailscale up` 済み**（未ログインなら導入時に止めて誘導）。teardown の no-op・DNSName 抽出
-   までは検証済。**残る実 e2e（実 tailnet で別端末から警告ゼロ確認）は `tailscale up` 認証＋見る端末が要る＝要ユーザー**。
+
+   **server 側 e2e ✅ 実証**（2026-06-10・実機 durandal）：`tailscale up`→Serve 有効化→`serve --bg` 設置後、
+   `curl https://durandal.<tailnet>.ts.net/`（**`-k` 無し**）で **HTTP 200・`ssl_verify_result=0`**、証明書は
+   **issuer=Let's Encrypt / subject=CN=durandal.<tailnet>.ts.net・90日**＝自己署名バックエンドに本物の LE が
+   被さってることを確認。**残るは見る端末（iPad/スマホ）から開いて警告ゼロ＋傾き/カメラ許可までの確認＝要ユーザー**。
+
+   実地で出た**前提が2つ**（どちらも tailnet/admin 側の一回ぽっきり。導入スクリプトは検知して誘導し止まる）：
+   - **Serve を tailnet で有効化**：初回は `Serve is not enabled on your tailnet` と admin URL が出る。開いて Enable
+     （MagicDNS＋HTTPS Certificates も）。一度やれば以後どのマシンでも不要。
+   - **`tailscale serve` は root/operator 権限が要る**：非 root だと `Access denied: serve config denied`。
+     `curl|bash` は stdin がパイプで sudo がパスワードを聞けない（自動 sudo 不可）ので、一度だけ
+     **`sudo tailscale set --operator=$USER`** を実行してから流し直す（以後 sudo 不要）。
+   - server 側で `tailscale up` 済みも前提（未ログインなら導入時に止めて誘導）。
 
 依存ゼロ寄り（`--mkcert`）と摩擦ゼロ寄り（`--tailscale`）の二段がこれで揃った。
+**見る端末は Tailscale ON が必要**＝OS は VPN を1本しか張れないので、素の WireGuard 等を使ってると排他（壊れはせず、トグルでどちらか）。
 
 ---
 

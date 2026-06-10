@@ -54,12 +54,20 @@ tailscale_serve_setup(){
   "$ts" status >/dev/null 2>&1 || die "tailscale にログインしてない。'$ts up' を実行してから流し直して。"
   say "Tailscale Serve を設定（ローカル :$PORT へプロキシ・tailnet に本物の Let's Encrypt）"
   local err; err="$(mktemp)"
-  if ! "$ts" serve --bg "https+insecure://localhost:$PORT" 2>"$err"; then
-    # 旧 CLI（--bg 非対応）へフォールバック
-    "$ts" serve https:443 / "https+insecure://localhost:$PORT" 2>>"$err" \
-      || { cat "$err" >&2; rm -f "$err"; die "tailscale serve に失敗。'$ts serve status' を確認して。"; }
+  # serve は --bg を試し、旧 CLI（--bg 非対応）へフォールバック。
+  if "$ts" serve --bg "https+insecure://localhost:$PORT" 2>"$err" \
+     || "$ts" serve https:443 / "https+insecure://localhost:$PORT" 2>>"$err"; then
+    rm -f "$err"; return 0
   fi
-  rm -f "$err"
+  # serve config は root/operator 権限が要る（tailscaled の設定変更）。curl|bash は stdin がパイプで
+  # sudo がパスワードを聞けない＝自動 sudo は不可。原因別に誘導して止める。
+  if grep -qiE 'denied|operator|permission' "$err"; then
+    rm -f "$err"
+    die "serve 設定に root 権限が要る。一度だけ↓を実行してから install.sh を流し直して（以後 sudo 不要）:
+       sudo $ts set --operator=\$USER"
+  fi
+  cat "$err" >&2; rm -f "$err"
+  die "tailscale serve に失敗（上を参照。'Serve is not enabled' なら表示の URL を admin で開いて有効化）。"
 }
 tailscale_serve_teardown(){
   local ts; ts="$(ts_bin)" || return 0
