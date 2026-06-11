@@ -73,6 +73,7 @@ function onOrientation(e) {
 // Pointer Events は iOS 12 非対応なので使わない。touch 端末は傾きで覗き込む。
 scene.addEventListener('mousemove', (e) => {
   if (caps.orientation === 'on') return;
+  if (p) return;                             // なで/つつき中（ドラッグ）は視点を動かさない
   if (e.target.closest('#tatazuka')) return; // 佇かを触っている間は視点を動かさない
   ty = clamp(((e.clientX / innerWidth) - 0.5) * 22, -14, 14);
   tx = clamp(-((e.clientY / innerHeight) - 0.5) * 22, -14, 14);
@@ -140,7 +141,10 @@ function renderPerm() {
 function partAt(target, clientY) {
   if (target.closest && target.closest('.face')) return '顔';
   const r = tatazuka.getBoundingClientRect();
-  return (clientY - r.top) < r.height * 0.45 ? '頭' : '体';
+  // VRM 時は #tatazuka が hidden（rect=0）＝顔の DOM も無いので、画面の上下で頭/体を分ける
+  const top = r.height ? r.top : 0;
+  const h = r.height || window.innerHeight;
+  return (clientY - top) < h * 0.45 ? '頭' : '体';
 }
 
 let p = null;
@@ -170,31 +174,30 @@ function gestureEnd() {
   p = null;
 }
 
+// ジェスチャは #scene（常に在る・全画面）で拾う。VRM 化で #tatazuka が hidden になっても
+// 効くように＝CSS の卵でも VRM の canvas でも、タップ/なで/長押しは #scene に bubble する。
+// （canvas は #scene の子なので pointer-events 設定無しでもイベントは #scene に届く）
 // touch（iOS 12 含む）
-tatazuka.addEventListener('touchstart', (e) => {
+scene.addEventListener('touchstart', (e) => {
   const t = e.changedTouches[0];
   gestureStart(e.target, t.clientX, t.clientY);
 }, { passive: true });
-tatazuka.addEventListener('touchmove', (e) => {
+scene.addEventListener('touchmove', (e) => {
   const t = e.changedTouches[0];
   gestureMove(t.clientX, t.clientY);
   if (p) e.preventDefault(); // なで中はスクロール/ラバーバンドを止める
 }, { passive: false });
-tatazuka.addEventListener('touchend', gestureEnd);
-tatazuka.addEventListener('touchcancel', gestureEnd);
+scene.addEventListener('touchend', gestureEnd);
+scene.addEventListener('touchcancel', gestureEnd);
 
 // mouse（デスクトップ）。setPointerCapture の代わりに window で move/up を拾う
-tatazuka.addEventListener('mousedown', (e) => gestureStart(e.target, e.clientX, e.clientY));
+scene.addEventListener('mousedown', (e) => gestureStart(e.target, e.clientX, e.clientY));
 addEventListener('mousemove', (e) => { if (p) gestureMove(e.clientX, e.clientY); });
 addEventListener('mouseup', gestureEnd);
 
-// 空き部屋（presence:false）は「ノック」できる：誰も居ない箱をつつくと、佇かが居る部屋から
-// こっちへ移ってくる（§6-1 の移動を client から起こす蛇口）。away 時は #tatazuka が
-// pointer-events:none なので、タップは下の #scene に届く＝ここで拾って sense を投げる。
-// 在室中（lastHere）は #tatazuka 側のジェスチャが処理するので、ここは空振りさせる。
-function knock() { if (!lastHere) sense('つつく'); }
-scene.addEventListener('touchend', knock);
-scene.addEventListener('mousedown', knock);
+// 留守（presence:false）の箱をつつくと佇かがこちらへ移る「ノック」は、gestureEnd の
+// sense('つつく') が兼ねる：hub は留守の部屋への sense を移動の蛇口として解釈し（§6-1）、
+// 在室なら poke として数える。だから別の knock ハンドラは要らない（タップ＝一つの出口）。
 
 // ---- HUD（プロト用デバッグ表示）----
 let lastIn = '-', lastOut = '-';
