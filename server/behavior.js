@@ -19,6 +19,7 @@ const REUNION_MIN_MS = 60 * 1000;  // この間隔以上あいて再接続した
 const TICK_MS = 30000;             // 時刻帯・在席時間・暇つぶしを刻む間隔
 const WEATHER_MS = 30 * 60 * 1000; // 天気を見直す間隔（変化はゆっくり。tick とは別サイクル）
 const WORK_MARKS = [60, 120, 180]; // 在席ぶっ通しで茶々を入れる分
+const TALK_MAX = 500;              // talk の text 上限（protocol §5-4。超過は頭だけ読む）
 
 function timeBand(hour) {
   if (hour < 5) return 'deepnight';
@@ -39,8 +40,9 @@ function timeBand(hour) {
 //   present(here) は presence の出口（既定は send。hub は自分の出口を注入）。onReady は hello 成立の
 //   合図（hub が部屋として迎え入れる）。onActive(bool) は活性の変化を hub に知らせる（出力の関所用）。
 // opts.reunion は再会の記憶（任意・接続をまたぐ共有ストア。reunion.js）。無ければ間隔に言及しない（PE）。
+// opts.talkMemory は会話の短期記憶（任意・接続をまたぐ共有ストア。talkmemory.js）。無ければ覚えない（PE）。
 export function createSession({ send, persona, now, tickMs, weather, weatherMs, activity, sources,
-                               present, managed, onReady, onActive, reunion }) {
+                               present, managed, onReady, onActive, reunion, talkMemory }) {
   const p = persona || createPersona();
   const clock = now || Date.now;
   const interval = tickMs || TICK_MS;
@@ -65,8 +67,9 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
   // extra は situation 固有の ctx（天気など）。基底 ctx（label 等）に重ねて persona に渡す。
   const say = async (situation, extra) => {
     const ln = await p.line(situation, extra ? { ...ctx, ...extra } : ctx);
-    if (closed || !active || !ln) return; // 生成待ちの間に切断/退室していたら送らない
+    if (closed || !active || !ln) return null; // 生成待ちの間に切断/退室していたら送らない
     send({ type: 'say', data: ln.mood ? { text: ln.text, mood: ln.mood } : { text: ln.text } });
+    return ln; // 実際に届いた台詞（onTalk が往復の記録に使う。他の呼び出しは無視）
   };
   const motion = (act) => { if (!closed && active) send({ type: 'motion', data: { act } }); };
 
@@ -223,12 +226,28 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
     }
   }
 
+  // ---- protocol §5-4: talk（受動の口） ----
+  // 生成（数秒）を待つ間、まず「うなずく」を返す＝server が刻む「間」（§4-1）。語彙追加ゼロ。
+  // 自由文は persona の ctx.text にだけ流す（LLM の user プロンプト行き。injection の構えは §5-4）。
+  async function onTalk(d) {
+    if (!d || typeof d.text !== 'string') return;
+    let text = d.text.trim();
+    if (!text) return;                                    // 空は黙って無視（§5-4）
+    if (text.length > TALK_MAX) text = text.slice(0, TALK_MAX); // 長すぎは頭だけ読む
+    motion('うなずく');
+    const extra = { text };
+    if (talkMemory) extra.history = talkMemory.recent();  // 直近のやり取りを persona に渡す
+    const ln = await say('talk', extra);
+    if (ln && talkMemory) talkMemory.push(text, ln.text); // 実際に届いた往復だけ覚える
+  }
+
   return {
     receive(msg) {
       if (!msg || typeof msg.type !== 'string') return;
       if (msg.type === 'hello') onHello(msg.data);
       else if (msg.type === 'caps') onCaps(msg.data);
       else if (msg.type === 'sense') onSense(msg.data);
+      else if (msg.type === 'talk') onTalk(msg.data); // 撃ちっぱなし（既存の async say と同じ扱い）
       // 未知の型は黙って無視
     },
     activate,    // hub が「この部屋に入った」と告げる（managed 時）。単体時は hello で自動

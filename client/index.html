@@ -47,6 +47,14 @@ window.addEventListener('unhandledrejection', function (e) {
 <!-- プロト用デバッグ表示 -->
 <div id="hud"></div>
 
+<!-- 受動の口（protocol §5-4 talk）：ユーザー→佇かのテキスト入力。
+     #scene の兄弟に置く＝タップが #scene のジェスチャ（sense）にならない（#perm と同じ構造） -->
+<button id="talk-toggle" type="button">💬</button>
+<form id="talk-bar" hidden>
+  <input id="talk-text" type="text" autocomplete="off" placeholder="佇かに話しかける">
+  <button type="submit">送る</button>
+</form>
+
 <!-- VRM 顔レイヤ用：vendor した three.js を "three" として解決（バンドラ不要・外部CDN非依存）。
      importmap 非対応の古いブラウザは単に VRM を読まず CSS の卵にフォールバックする。 -->
 <script type="importmap">

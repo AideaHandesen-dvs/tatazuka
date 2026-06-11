@@ -22,8 +22,8 @@ python3 -m http.server 8000 -d client
 
 | ファイル | 責務 |
 |---|---|
-| `index.html` | 骨組みだけ。box（#scene/#stage）・佇か・許可ボタン置き場・HUD |
-| `app.js` | cap 検出・入力の意味化（つつく/なでる/長押し/揺らす）・メッセージ配線 |
+| `index.html` | 骨組みだけ。box（#scene/#stage）・佇か・許可ボタン置き場・HUD・talk 入力（💬ボタン＋バー） |
+| `app.js` | cap 検出・入力の意味化（つつく/なでる/長押し/揺らす）・talk 入力（§5-4）・メッセージ配線 |
 | `face.js` | **顔**。protocol の意味論（mood/act/presence/say）を DOM に翻訳する層 |
 | `ws-client.js` | **本物の server への接続**（WS）。再接続＋hello 打ち直し（§6-2）を担当。app.js の既定の接続先 |
 | `mock-server.js` | **偽の本体**。protocol v0 を厳守して喋る server スタブ。オフライン開発用（import を差し替えて使う） |
@@ -93,6 +93,12 @@ cp ~/somewhere/youravatar.vrm client/models/tatazuka.vrm
   加速度は「揺らす」に意味化してから送る。
 - **なでなで判定**：ポインタ移動距離が 240px たまるごとに `sense なでる` を1発（protocol §5-2 の
   「一定量ごとのイベント繰り返し」）。タップ（移動 12px 未満）は「つつく」、600ms 押しっぱなしは「長押し」。
+- **talk 入力（受動の口・protocol §5-4）**：💬ボタン → 入力バー → 送信で閉じる。UI は **`#scene` の
+  兄弟**に置く（#perm と同じ構造）——ボタンや入力欄のタップは #scene に bubble しないので、絶対に
+  `sense`（つつく等）にならない（0e612bb の「リスナーは恒久要素に」の教訓と同じ筋）。`<form>` submit
+  ベースだから物理キーボードの Enter もソフトキーボードの「開く/Go」も同じ出口。input は
+  `font-size: 16px`（未満だと iOS がフォーカス時に自動ズーム）＋ `user-select: text`（body の
+  none を上書き）。返事は普通の `say` なので吹き出し側は無改修。
 - **吹き出しの 8 秒フェードは暫定**。protocol 上は「新しい say が前の台詞を置き換える」だけで
   消す指示は無い（§4-2）。永遠に残ると見た目が悪いので client の解釈で薄くしている。
   ちゃんとやるなら protocol に消去の語彙を足す議論をすること。

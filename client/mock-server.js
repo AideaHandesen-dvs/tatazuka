@@ -100,12 +100,21 @@ export function connect({ onMessage }) {
     }
   }
 
+  // ---- protocol §5-4: talk（受動の口） ----
+  function onTalk(d) {
+    if (!d || typeof d.text !== 'string' || !d.text.trim()) return; // 空は黙って無視
+    out('motion', { act: 'うなずく' }); // 考えてる間の相槌（「間」は server が刻む：§4-1）
+    const head = d.text.trim().slice(0, 12);
+    setTimeout(() => say(`ふーん、「${head}」ねえ。…まあ、聞いてやったぞ。`, '通常'), 900);
+  }
+
   return {
     send(msg) {
       setTimeout(() => {
         if (msg.type === 'hello') onHello(msg.data);
         else if (msg.type === 'caps') onCaps(msg.data);
         else if (msg.type === 'sense') onSense(msg.data);
+        else if (msg.type === 'talk') onTalk(msg.data);
         // 未知の型は黙って無視
       }, 60);
     },

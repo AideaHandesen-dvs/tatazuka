@@ -42,6 +42,7 @@ import { createTrash } from '../connectors/trash.js';
 import { createResume } from '../connectors/resume.js';
 import { createUptime } from '../connectors/uptime.js';
 import { createReunion } from './reunion.js';
+import { createTalkMemory } from './talkmemory.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
 // どちらも line() の顔が同じなので behavior.js からは区別がつかない。
@@ -173,10 +174,11 @@ const server = https.createServer(
 // 接続ごとに脳（createSession）を作るが、佇かが居る部屋だけが喋る。TZ_BROADCAST=1 で全部屋に居る退化形。
 const broadcast = process.env.TZ_BROADCAST === '1';
 const reunion = createReunion(); // 接続をまたぐ「再会の記憶」。プロセスに一つ・全部屋で共有（§6-3）
+const talkMemory = createTalkMemory(); // 会話の短期記憶。プロセスに一つ・全部屋で共有（佇かは一人。§5-4）
 const hub = createHub({
   broadcast,
   makeSession: (opts) => createSession({
-    persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources(), reunion, ...opts,
+    persona: makePersona(), weather: createWeather(), activity: createActivity(), sources: makeSources(), reunion, talkMemory, ...opts,
   }),
 });
 attachWS(server, '/ws', (sock) => {

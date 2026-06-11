@@ -34,6 +34,7 @@ function room(hub, label) {
     hello: (resumed) => r.receive({ type: 'hello', data: { protocol: 0, label, resumed } }),
     helloBad: () => r.receive({ type: 'hello', data: { protocol: 99 } }),
     sense: (kind) => r.receive({ type: 'sense', data: { kind } }),
+    talk: (text) => r.receive({ type: 'talk', data: { text } }),
     close: () => r.close(),
   };
 }
@@ -73,6 +74,22 @@ test('空き部屋を つつくと そこへ移動する（先客は空き・移
   assert.deepEqual(presences(a.sent), [false], '先客 A は空く');
   assert.deepEqual(presences(b.sent), [true], 'B に佇かが移る');
   assert.ok(says(b.sent).length >= 1, 'B で sense の反応が喋る');
+  assert.ok(!says(b.sent).some((x) => x.includes('ここが')), '移動では greet しない');
+});
+
+test('空き部屋に話しかけても そこへ移動して返事する（protocol §5-4・挨拶はしない）', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const hub = makeHub();
+  const a = room(hub, 'A'); a.hello();
+  const b = room(hub, 'B'); b.hello();
+  t.mock.timers.tick(800); await flush(); // A の greet を消化
+  a.sent.length = 0; b.sent.length = 0;   // ここからの差分を見る
+
+  b.talk('おい、こっち来いよ'); await flush();
+  assert.deepEqual(presences(a.sent), [false], '先客 A は空く');
+  assert.deepEqual(presences(b.sent), [true], 'B に佇かが移る');
+  assert.ok(b.sent.some((m) => m.type === 'motion' && m.data.act === 'うなずく'), '移った先で頷く（間）');
+  assert.ok(says(b.sent).length >= 1, 'B で返事（相槌の床）が喋る');
   assert.ok(!says(b.sent).some((x) => x.includes('ここが')), '移動では greet しない');
 });
 

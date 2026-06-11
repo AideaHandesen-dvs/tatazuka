@@ -99,3 +99,11 @@ test('状態は createPersona ごとに独立（last index を共有しない）
     prev = cur;
   }
 });
+
+test('talk（受動の口）：内容が分からなくても相槌の床が喋る（protocol §5-4）', () => {
+  const p = createPersona();
+  // LLM 無しでも talk は黙らない。ctx.text を渡しても固定台詞（床）が返る
+  const r = p.line('talk', { label: '居間', text: '今日寒くない？', history: [] });
+  assert.ok(r && typeof r.text === 'string' && r.text.length > 0, '相槌が返る');
+  assert.ok(MOODS.has(r.mood), `mood が語彙内: ${r.mood}`);
+});

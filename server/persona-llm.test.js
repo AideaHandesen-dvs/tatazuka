@@ -221,3 +221,32 @@ test('createProvider は env を見て provider/null を切り替える', () => 
   assert.ok(createProvider({ TZ_LLM: 'ollama' }), 'ollama で provider');
   assert.ok(createProvider({ TZ_LLM: 'claude' }), 'claude で provider');
 });
+
+// ---- 受動の口（protocol §5-4 talk） ----
+
+test('talk：LLM 経路に乗り、ユーザーの言葉は入るが label は入らない', async () => {
+  const calls = [];
+  const p = createLLMPersona({
+    provider: stubProvider('{"text":"外9度だぞ。寒いに決まってる","mood":"呆れ"}', calls),
+    fallback: stubFallback(),
+  });
+  const r = await p.line('talk', { label: 'リビング', text: '今日寒くない？' });
+  assert.deepEqual(r, { text: '外9度だぞ。寒いに決まってる', mood: '呆れ' });
+  assert.match(calls[0], /今日寒くない？/, 'ユーザーの言葉が user プロンプトに入る');
+  assert.doesNotMatch(calls[0], /リビング/, 'label は greet 系限定（機械的な名前連呼を防ぐ）');
+});
+
+test('talk：ctx.history があれば「ここまでのやり取り」を織り込む（無ければ書かない）', async () => {
+  const calls = [];
+  const p = createLLMPersona({ provider: stubProvider('{"text":"ん"}', calls), fallback: stubFallback() });
+  await p.line('talk', { text: 'じゃあ暖房つけるか', history: [{ user: '寒くない？', reply: '外9度だぞ' }] });
+  assert.match(calls[0], /ここまでのやり取り/, '履歴の見出しが入る');
+  assert.match(calls[0], /相手「寒くない？」→ あなた「外9度だぞ」/, '往復が形式どおり入る');
+  await p.line('talk', { text: '腹減った' });
+  assert.doesNotMatch(calls[1], /ここまでのやり取り/, '履歴が無ければ見出しごと省く');
+});
+
+test('talk：壊れた出力は相槌の床（ルール表）へ', async () => {
+  const p = createLLMPersona({ provider: stubProvider('生成に失敗して散文だけ返した'), fallback: stubFallback() });
+  assert.deepEqual(await p.line('talk', { text: 'おい' }), { text: 'RULE:talk', mood: '通常' });
+});

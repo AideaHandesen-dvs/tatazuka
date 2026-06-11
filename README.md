@@ -35,6 +35,7 @@ LLM が無くても・遅くても佇かは手書きの台詞で喋る（[server
 **家の状態にも反応する** — Home Assistant と繋ぐと、帰宅すれば「おかえり」、外出すれば「いってらっしゃい」（connectors/ の入力役・在席判定・PE）。
 **一度に一箇所にしか居ない** — 複数端末を繋いでも佇かは一つの部屋にだけ居て、空いた端末を つつくと そっちへ移ってくる（仲介ハブ・[server/README.md](server/README.md) の「プレゼンス」）。物理スタックチャンも将来この同じハブに挿さる「もう一つの身体」になる。
 **戻ると覚えている** — 端末ごとに最後に見た時刻を覚えていて、しばらくぶりに開くと「居間、3分ぶりだな」と茶々を入れる。
+**話しかけられる** — 画面の 💬 から佇かに言葉で話しかけると、キャラの声色で返事が返る（protocol §5-4 talk）。LLM が無くても相槌で受ける。会話は直近数往復を覚えていて、部屋を移っても続く。空き部屋に話しかけると佇かがそっちへ来る。
 次の一手：connectors の「出力」側 —— 物理スタックチャンを表示先にする（[connectors/](connectors/README.md)・要実機）。
 
 ---
@@ -241,7 +242,7 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 
 **open-ended が要るなら（後段・同一 seam）**：将来「何でも自分で調べに行く部下」が本当に欲しくなったら、外向きの `delegate(query) → text` を足す。戻り値の落とし所は入力と同じ（結果が `situation` の ctx）で protocol 不変。頭脳には **ReadOnly のサブエージェント**を据える——第一候補は**自作 PawAgent に ReadOnly autonomy 段＋構造化出力を足したもの**（sibling リポ・shell/fs/gui/dbus を持つ hard エージェントだが、パス展開・コマンド解析・blocklist・HITL の安全足場が既にある）。サードパーティの ZeroClaw（依存ゼロ思想に逆らう外部ランタイム）や Moltworker より「中身を把握した自前」を優先する。ReadOnly 段が soft の境界で、autonomy を上げる＝§1 を意識的に上書きする hard 化＝**意図的スイッチ**。PawAgent 自身の原則「actuation は必ず HITL」とも噛む——*いじらないなら確認するものが無い*から ReadOnly だけは自律でよい。
 
-**受動の口（ユーザーが佇かに話しかける）は別作業**：ユーザー→佇かのテキスト入力路は protocol の新語彙で、両側同セッションで直す独立した決定。`delegate()` の seam は能動でも受動でも同じものを使う。
+**受動の口（ユーザーが佇かに話しかける）は実装済み【2026-06-12】**：protocol の新語彙 `talk`（[protocol/README.md](protocol/README.md) §5-4）で、両側同セッションの規律どおり contract→server→client を一気に直した。生の自由文は「client が解釈した意味」ではないので `sense` に入れず独立型に（tilt ストリームと同じ筋）。返事は普通の `say`・LLM 無しでも相槌の床で受ける・会話の短期記憶（直近6往復・プロセス内）は server 内部実装で protocol 不変。ユーザーの自由文は LLM の user プロンプトにしか入れない＝injection も構造で受ける（soft の担保と同型）。`delegate()` の seam は能動でも受動でも同じものを使う——将来 delegate を足すときも、この talk の返事と同じ蛇口に流れ込む。
 
 土台は**既存の仲介ハブ（`server/hub.js`）がそのまま使える**。
 
@@ -266,6 +267,7 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | PC作業監視 | 離席/復帰の idle 検知（X11/Wayland・PE・在席時間に縮退）。アクティブウィンドウは未着手 | ✅ 2026-06-09 |
 | プレゼンス | 仲介ハブ＝一度に一箇所・つつくと移動（protocol §6-1 の移動ロジック実装。退化形は `TZ_BROADCAST`） | ✅ 2026-06-09 |
 | 再会の記憶 | label ごとの最終時刻を覚え、再接続に「3分ぶりだな」（protocol §6-3） | ✅ 2026-06-09 |
+| 受動の口 | ユーザー→佇かのテキスト入力（protocol §5-4 talk・相槌の床＋LLM会話・短期記憶6往復・空き部屋へ話しかけると移動） | ✅ 2026-06-12 |
 | M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**＋**git 未コミット**（soft 委譲の readonly プローブ初例）が稼働＋**ハブのルーティング**（出力の土台）。OpenClaw 連携は**向き3×soft・ランタイム無し**で決定（§7-1）。残るは物理スタックチャンの実機側（要実機） |
 | OS別バックエンド | host 観察プローブの Win/Mac 対応（同じ IO 注入境界の内側を差し替え） | ✅ **Mac＋Win 全6本 landed**（2026-06-09・実機 osx-kvm／tiny10 で検証）。**特権ゼロ**＝読めるものだけ対応・thermal は両 OS で縮退／`process.platform` で読み口を分岐し**正規化境界で OS 差を吸収**（判定は無改修再利用）。Win は `Get-CimInstance`／PowerShell（disk/battery/memory/net/nic）＋`$Recycle.Bin` 再帰カウント（trash）。残るは導入（installer・自動起動）で OS バックエンドとは別議題。connectors/README.md §7-3 |
 | 導入（自動起動） | OS の仕組みで黙って起動・自動再起動（「観察の到達」でなく「導入の到達」＝開発者作法→エンドユーザー配布） | 🚧 導入は二層。**①自動起動ユニット**＝Linux=systemd user／macOS=launchd／Win=Task Scheduler（ログオン＋時刻トリガ）の**三 OS 全 landed**（Linux/macOS=2026-06-09・Win=2026-06-10。各実機で起動＋クラッシュ自動復活を実証。Win は tiny10/Win10/PS5.1/node20 で全 e2e）。**②エンドユーザー導入**は**三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall）。ワンライナー（`curl\|bash` / `irm\|iex`）で署名の壁（$99/SmartScreen）を構造的に回避（実証済）・GitHub 無料ホスティング・証明書は **openssl／`--mkcert`／`--tailscale` の三段すべて三 OS 実装済**。**`--mkcert` が LAN 利用の本命＝実機 iPad で表示＋カメラまで landed（client M2・2026-06-08）でそれで完結**。`--tailscale`（Tailscale Serve で tailnet ホスト名に本物の LE・佇かは自己署名 HTTPS のまま前段プロキシ・serve.js 無改修）は**外から繋ぐ用の任意オプション**（LAN には不要・サーバ側 e2e のみ実証）。秘密は env へ・env 無くても起動（PE）。[deploy/](deploy/README.md) |

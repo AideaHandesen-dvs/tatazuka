@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createSession } from './behavior.js';
 import { createReunion } from './reunion.js';
+import { createTalkMemory } from './talkmemory.js';
 
 // 手で解決できる deferred な persona。line() を pending のまま握って切断を割り込ませる
 function deferredPersona() {
@@ -236,4 +237,93 @@ test('protocol 不一致の hello は error を返し、人格は動かさない
   s.receive({ type: 'hello', data: { protocol: 99 } });
   assert.deepEqual(sent, [{ type: 'error', data: { message: 'protocol version mismatch' } }]);
   s.close();
+});
+
+// ---- protocol §5-4: talk（受動の口） ----
+
+test('talk：persona に situation=talk＋ctx.text/label が渡り、頷きが say より先', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [], seen = [];
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona(seen), tickMs: 100000 });
+  s.receive(HELLO);
+  s.receive({ type: 'talk', data: { text: '今日寒くない？' } });
+  await flush();
+
+  const tk = seen.find((x) => x.s === 'talk');
+  assert.ok(tk, 'persona が talk を受ける');
+  assert.equal(tk.ctx.text, '今日寒くない？', 'ユーザーの言葉が ctx.text で届く');
+  assert.equal(tk.ctx.label, '居間', '基底 ctx（label）に重ねて渡る');
+  const iNod = sent.findIndex((m) => m.type === 'motion' && m.data.act === 'うなずく');
+  const iSay = sent.findIndex((m) => m.type === 'say' && m.data.text === 'talk');
+  assert.ok(iNod >= 0, '受け取った合図に頷く');
+  assert.ok(iSay >= 0, '返事の say が届く');
+  assert.ok(iNod < iSay, '頷き（間）が返事より先（§4-1）');
+  s.close();
+});
+
+test('talk：空・空白・非文字列・data 無しは黙って無視（頷きもしない）', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [], seen = [];
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona(seen), tickMs: 100000 });
+  s.receive(HELLO);
+  sent.length = 0;
+  s.receive({ type: 'talk', data: { text: '' } });
+  s.receive({ type: 'talk', data: { text: '   ' } });
+  s.receive({ type: 'talk', data: { text: 42 } });
+  s.receive({ type: 'talk' });
+  await flush();
+
+  assert.ok(!seen.some((x) => x.s === 'talk'), 'persona に渡らない');
+  assert.equal(sent.length, 0, '頷きも say も出ない');
+  s.close();
+});
+
+test('talk：長すぎる text は頭 500 字だけ読む', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const seen = [];
+  const s = createSession({ send: () => {}, persona: recordingPersona(seen), tickMs: 100000 });
+  s.receive(HELLO);
+  s.receive({ type: 'talk', data: { text: 'あ'.repeat(600) } });
+  await flush();
+
+  const tk = seen.find((x) => x.s === 'talk');
+  assert.equal(tk.ctx.text.length, 500, '500 字に切り詰める（§5-4）');
+  s.close();
+});
+
+test('talk：talkMemory があれば直前の往復が ctx.history で渡る', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const seen = [];
+  const talkMemory = createTalkMemory();
+  const s = createSession({ send: () => {}, persona: recordingPersona(seen), tickMs: 100000, talkMemory });
+  s.receive(HELLO);
+  s.receive({ type: 'talk', data: { text: '寒くない？' } });
+  await flush();
+  s.receive({ type: 'talk', data: { text: 'じゃあ暖房つけるか' } });
+  await flush();
+
+  const first = seen.filter((x) => x.s === 'talk')[0];
+  const second = seen.filter((x) => x.s === 'talk')[1];
+  assert.deepEqual(first.ctx.history, [], '一回目は履歴なし');
+  // recordingPersona は text=situation（='talk'）を返すので、返事は 'talk' として記録される
+  assert.deepEqual(second.ctx.history, [{ user: '寒くない？', reply: 'talk' }], '二回目は一往復目を踏まえる');
+  s.close();
+});
+
+test('talk：生成中に close されたら say は漏れず、記憶にも残らない', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [];
+  const talkMemory = createTalkMemory();
+  const { persona, resolve } = deferredPersona();
+  const s = createSession({ send: (m) => sent.push(m), persona, tickMs: 100000, talkMemory });
+  s.receive(HELLO);
+  s.receive({ type: 'talk', data: { text: 'おい' } });
+  assert.ok(sent.some((m) => m.type === 'motion' && m.data.act === 'うなずく'), '頷きは即時');
+
+  s.close(); // ★生成待ちの最中に切断
+  resolve({ text: '遅れて来た返事', mood: '通常' });
+  await flush();
+
+  assert.ok(!sent.some((m) => m.type === 'say'), 'close 後に say が漏れてはいけない');
+  assert.deepEqual(talkMemory.recent(), [], '届かなかった往復は覚えない');
 });

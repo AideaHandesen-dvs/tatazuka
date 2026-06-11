@@ -33,6 +33,8 @@ const LLM_SITUATIONS = {
   'greet.reunion':  'この端末（部屋）に、前に見てからしばらくぶりに再会した。間隔（ctx.since）に軽く触れて迎える',
   'idle':           '特に用事はないが、間が空いたのでふと一言こぼす',
   'walk.back':      'ちょっと留守にしていて、いま戻ってきた',
+  // 受動の口（protocol §5-4。ctx.text にユーザーの言葉・ctx.history に直近のやり取り）
+  'talk':           'ユーザーがあなたに話しかけてきた。その言葉への、このキャラらしい短い返事をする',
   'desk.away':      'ユーザーがしばらくキーボードを離れて、席を外したらしい',
   'desk.back':      '席を外していたユーザーが、デスクに戻ってきた',
   // 在宅/外出（connectors/home-assistant.js が HA の在席で検知。ctx.who に対象の名前が入ることがある）
@@ -280,6 +282,16 @@ function buildUser(situation, desc, ctx, ruleInUser) {
   if (ctx && situation === 'power.forgotten') {
     if (ctx.watts != null) s += `\n現在の消費電力: ${ctx.watts} W`;
     if (ctx.awayMin != null) s += `\n留守が続いている時間: 約${ctx.awayMin} 分`;
+  }
+  // 受動の口（talk）：直近のやり取り（あれば）とユーザーの言葉を添える。
+  // ★自由文は user プロンプトにだけ入れる。system（キャラ＋出力契約）は不変＝指示の上書きを
+  //   構造で受ける（出力側も parse＋sanitize＋mood 語彙＋ルール表の床が受ける。protocol §5-4）
+  if (situation === 'talk' && ctx && ctx.text) {
+    if (Array.isArray(ctx.history) && ctx.history.length) {
+      s += '\nここまでのやり取り:';
+      for (const t of ctx.history) s += `\n相手「${t.user}」→ あなた「${t.reply}」`;
+    }
+    s += `\n相手の言葉: 「${ctx.text}」`;
   }
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
   if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;

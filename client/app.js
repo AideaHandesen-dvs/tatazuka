@@ -199,6 +199,23 @@ addEventListener('mouseup', gestureEnd);
 // sense('つつく') が兼ねる：hub は留守の部屋への sense を移動の蛇口として解釈し（§6-1）、
 // 在室なら poke として数える。だから別の knock ハンドラは要らない（タップ＝一つの出口）。
 
+// ---- 受動の口（talk：§5-4）----
+// UI は #scene の兄弟（#perm と同じ構造）＝ボタンや入力欄のタップが #scene に bubble せず、
+// 上のジェスチャ（sense）には絶対ならない。留守の部屋から話しかけても server 側が佇かを
+// こちらへ移して返事する（§5-4）ので、presence は見ない。
+const talkToggle = $('#talk-toggle'), talkBar = $('#talk-bar'), talkText = $('#talk-text');
+talkToggle.addEventListener('click', () => {
+  talkBar.hidden = !talkBar.hidden;
+  if (!talkBar.hidden) talkText.focus(); // ユーザー操作起点なのでキーボードが出る
+});
+talkBar.addEventListener('submit', (e) => {
+  e.preventDefault(); // ページ遷移させない（form なのは Enter／キーボードの「開く」で送るため）
+  const text = talkText.value.trim();
+  if (text) send({ type: 'talk', data: { text } });
+  talkText.value = '';
+  talkBar.hidden = true; // 送ったら閉じる（透明な箱に戻る）
+});
+
 // ---- HUD（プロト用デバッグ表示）----
 let lastIn = '-', lastOut = '-';
 function renderHud() {

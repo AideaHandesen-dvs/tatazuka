@@ -11,7 +11,8 @@
 //     （カメラ背景の透明な箱だけ）。これを部屋の出力に関所（gatedSend）を噛ませて実現する。
 //   - welcome/error は握手なので常に通す（活性に関係なく客へ届ける）。presence は脳が present() で
 //     直接出す（関所を通さない＝空き部屋にも presence:false を届けられる）。
-//   - 空き部屋を つつく（sense）と、そこへ移動する（occupant を移す）。挨拶はせず sense の反応で迎える。
+//   - 空き部屋を つつく（sense）か話しかける（talk）と、そこへ移動する（occupant を移す）。
+//     挨拶はせず sense/talk の反応で迎える（§6-1 のノック・§5-4）。
 //   - occupant が切れたら、残った部屋のどれかへ佇かが移る（居なくなったら誰も居ない）。
 //   - broadcast=true は退化形（全部屋に居る・デバッグ用。protocol §6-1 line 153 の「フラグで残す」）。
 //   - protocol も client も不変：client は presence に従って描くだけ（§6-1）。server 実装の成熟。
@@ -72,8 +73,8 @@ export function createHub({ makeSession, broadcast } = {}) {
 
       return {
         receive(msg) {
-          // 空き部屋を つつかれたら、まず佇かをそこへ移してから sense を処理する（移動で迎える）。
-          if (!broadcast && msg && msg.type === 'sense' && !room.active && occupant) {
+          // 空き部屋を つつかれた／話しかけられたら、まず佇かをそこへ移してから処理する（移動で迎える）。
+          if (!broadcast && msg && (msg.type === 'sense' || msg.type === 'talk') && !room.active && occupant) {
             moveTo(room, { greet: false });
           }
           room.session.receive(msg);
