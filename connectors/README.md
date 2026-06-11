@@ -126,6 +126,42 @@ sense（つつき）も返す。実 server 相手の end-to-end で、サーバ�
 > **soft の第一実装はランタイム無し**（既存 LLM＋ curated readonly プローブ＝入力コネクタ）で閉じる
 > （[../README.md](../README.md) §7-1）。open-ended な「佇か発の問い合わせ（第三の顔）」は将来の seam（§7-2）。
 
+### 3-3. 実機スタックチャンの足回り＝MQTT 身体バス【決定・2026-06-12】
+
+実機（ESP32-S3 自作・丸顔 GC9A01・SG90×2・ICM20948・**USB 常時給電＝バッテリー無し**）の接続は
+**WiFi＋MQTT**。v0 を喋るのは引き続き `stackchan.js`（durandal 常駐）だけで、実機は v0 も TLS も
+知らない**バカな身体**——購読して描く/動く・センサを発行するだけ。
+
+```
+server ←WS(v0)→ stackchan.js（脳側・意味論→駆動の翻訳＝makeBody）
+                    ↕ MQTT（QoS0・LAN 信頼＝§6-4 と同じ構え・認証なし）
+                ESP32-S3 ファーム（駆動プリミティブの実行とイベント発行だけ）
+```
+
+- **ブローカーも自前**（[broker.js](broker.js)・QoS0 限定・~100行）。`serve.js` が `TZ_MQTT_BROKER=1` で
+  同居ホストする＝**新サービス・apt・依存ゼロのまま**。標準 MQTT 3.1.1 なので、気に入らなければ
+  `TZ_MQTT_URL` を mosquitto に向けるだけで差し替え可（ファーム・脳側とも無改修）。
+- **トピック契約**（基底は `TZ_STACKCHAN_TOPIC`・既定 `tatazuka/body/stackchan`）：
+
+| topic | 向き | payload | 意味 |
+|---|---|---|---|
+| `…/cmd/face` | ↓ | `{"eyes":"normal\|flat\|squint\|happy\|angry\|shy","led":"#RRGGBB","cheek":bool}` | mood の翻訳結果（§4-3 → ASCII id） |
+| `…/cmd/neck` | ↓ | `{"gesture":"look\|nod\|shake\|hop"}` | act の翻訳結果。**アニメーション（時間芸）はファーム内**＝ネット越しに角度を刻まない |
+| `…/cmd/mouth` | ↓ | `{"n":<口パク数 0–20>}` | say の口パク。台詞本文は流さない（身体に要るのは口の動きだけ） |
+| `…/cmd/power` | ↓ | `{"on":bool}` | presence。off＝寝る（バックライト消灯＝「誰もいない部屋」の物理版） |
+| `…/ev/sense` | ↑ | `{"kind":"poke\|stroke\|hold\|shake\|lift"}` | 身体への接触。脳側が v0 の `sense` に翻訳（poke→つつく/stroke→なでる/hold→長押し/shake→揺らす/lift→持ち上げる）。**`持ち上げる` は v0 制定以来初の実装者**（IMU） |
+
+- **意味論→駆動の翻訳は脳側**（`makeBody` に `drive` 注入）・**未知の channel/値はファームも黙って無視**
+  （§4-1 が物理まで貫通）・cmd の取りこぼしは気にしない（QoS0。re-hello で server が状態を送り直す §6-2）。
+- **配線（組み上げセッション用・推奨ピン。変えたらここを直してからファームを直す）**：
+  GC9A01（SPI）= SCK:GPIO12 / MOSI:GPIO11 / CS:GPIO10 / DC:GPIO9 / RST:GPIO8 / BLK:GPIO14（PWM＝presence off で減光）、
+  ICM20948（I2C）= SDA:GPIO4 / SCL:GPIO5（addr 0x68）、SG90 = pan:GPIO6 / tilt:GPIO7（**5V は USB 直・GND 共通・
+  サーボレールに 470〜1000µF**）、BOOT ボタン（GPIO0）= poke。strapping pin（0/3/45/46）はボタン以外に使わない。
+- ファーム想定：PlatformIO（Arduino core）＋ LovyanGFX（GC9A01・卵顔の移植）＋ PubSubClient ＋ ICM20948 lib。
+  shake＝加速度ノルムのしきい値＋デバウンス／lift＝持続的な傾き・加速度変化（実測で詰める）。
+- 起動：`TZ_MQTT_BROKER=1 node server/serve.js`（ブローカー同居）／
+  `TZ_MQTT_URL=mqtt://localhost:1883 node connectors/stackchan.js`（MQTT 身体モード。URL 無しなら従来の log モード）。
+
 ---
 
 ## 4. 作業規律（イベント源パターンの三点・README §6-4）
@@ -279,8 +315,13 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   （protocol §6-1）。物理スタックチャンはここに挿さるもう一つの「部屋＝身体」になる（§3-2）。
 - [stackchan.js](stackchan.js) … **出力役の初例＝v0 を喋るヘッドレス client**（物理スタックチャンの替え玉）。
   実機なしで「別デバイスが部屋として挿さる」を実 server 相手に end-to-end 実証（§3-2 末尾）。意味論型語彙→物理駆動
-  （LED色/目/サーボ/口パク）の翻訳は `makeBody({log})` の純ロジック＝実機ファームは log を実駆動に差すだけで drop-in。
+  （LED色/目/サーボ/口パク）の翻訳は `makeBody({log, drive})` の純ロジック＝実機ファームは駆動プリミティブを実行するだけで drop-in。
   `node connectors/stackchan.js [wss://host:8443/ws]`（自己署名 dev には `NODE_TLS_REJECT_UNAUTHORIZED=0`）。stdin で sense（つつき）も送れる。
+- [broker.js](broker.js) … **自前 MQTT ブローカー（QoS0）＝身体バスの待ち合わせ場所**（§3-3）。`serve.js` が
+  `TZ_MQTT_BROKER=1` で同居ホスト＝依存ゼロ・新サービス無し。`stackchan.js` は `TZ_MQTT_URL` で **MQTT 身体モード**
+  ——下り `…/cmd/{face,neck,mouth,power}`（ASCII 駆動プリミティブ）・上り `…/ev/sense`（poke/stroke/hold/shake/lift →
+  v0 sense。**lift＝`持ち上げる` は v0 制定以来の初実装**・server 側の反応 `sense.lift` も着地）。偽身体（自前 MQTT
+  クライアント）相手に shake→怒り顔＋首振り・lift→「下ろせ！」まで**実機ゼロで end-to-end 実証済み**（2026-06-12）。
 
 **まだ無い（M5 の残り）**：
 
@@ -291,9 +332,10 @@ TZ_HASS_URL=http://homeassistant.local:8123 TZ_HASS_TOKEN=eyJ... TZ_HASS_PERSON=
   （`git.js` / `disk.js`）。他（ビルド/テスト状態 等）は同じ型に沿って足すだけ。「開いてるファイル」はアクティブ
   ウィンドウ依存で Wayland 不可・プライバシーのため見ない（activity.js と同方針）。open-ended な delegate
   seam（§7-2）は要ると分かってから。
-- **出力**：**ソフトの替え玉（[stackchan.js](stackchan.js)）で継ぎ目は landed・実証済み**（§3-2 末尾）。残るのは実機側の配線
-  （`makeBody` の log を NeoPixel/servo/speaker の実駆動に差す）と、server が cap を見て振る舞いを変えたくなったときの
-  サーボ/LED cap 語彙の正式な非破壊拡張だけ。**要実機なのはこの最後の物理配線のみ**で、protocol・hub・翻訳ロジックは固まった。
+- **出力**：**脳側の全行程が landed**——v0 の継ぎ目（[stackchan.js](stackchan.js)・§3-2）に加え、**実機への足回り
+  （MQTT 身体バス・[broker.js](broker.js)・§3-3）も実機ゼロで end-to-end 実証済み**。残るのは**組み立てだけ**
+  （ESP32-S3＋GC9A01＋SG90×2＋ICM20948 を §3-3 の配線表どおりに組み、ファームが cmd を実行・ev を発行する）。
+  server が cap を見て振る舞いを変えたくなったときのサーボ/LED cap 語彙の正式な非破壊拡張はその時に。
 
 ```sh
 node --test connectors/*.test.js   # connector の契約テスト（依存ゼロ）

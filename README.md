@@ -25,7 +25,7 @@
 | M3 | 依存ゼロ WebSocket サーバー（[server/](server/README.md)） | ✅ |
 | M4 | 人格・イベント処理 | 🚧 ルールベース＋**LLM persona 差し替え**＋**ゴースト差し替え（5体）**＋**天気・作業監視イベント**。小型モデル特有の崩れ（照れ偏り・／run-on→尻切れ・mood漏れ）を実測で是正 |
 | 顔 | VRM アバター＋CSS フォールバック | ✅ Android 実機で確認 |
-| M5 | OpenCLAW / スタックチャン連携（[connectors/](connectors/README.md)） | 🚧 入力＝Home Assistant（在宅/外出）＋git（未コミット）が稼働。OpenClaw は「向き3×soft・ランタイム無し」で決定（§7-1）。出力（表示先）はこれから |
+| M5 | OpenCLAW / スタックチャン連携（[connectors/](connectors/README.md)） | 🚧 入力＝判定型出揃い（HA・MQTT・readonly プローブ 26 本）。OpenClaw は「向き3×soft・ランタイム無し」で決定（§7-1）。出力＝**脳側全行程 landed**（v0 替え玉＋MQTT 身体バス・実機ゼロで e2e 済）。残るは実機の組み立てのみ |
 
 **喋る言葉も差し替えられる** — 「何を喋るか」を LLM 生成に格上げできる（ollama / Claude API 両対応）。
 人格そのもの（ゴースト）も `characters/<名前>.txt` で丸ごと差し替えられる（伺かの ghost 文化）。
@@ -268,7 +268,7 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | プレゼンス | 仲介ハブ＝一度に一箇所・つつくと移動（protocol §6-1 の移動ロジック実装。退化形は `TZ_BROADCAST`） | ✅ 2026-06-09 |
 | 再会の記憶 | label ごとの最終時刻を覚え、再接続に「3分ぶりだな」（protocol §6-3） | ✅ 2026-06-09 |
 | 受動の口 | ユーザー→佇かのテキスト入力（protocol §5-4 talk・相槌の床＋LLM会話・短期記憶6往復・空き部屋へ話しかけると移動） | ✅ 2026-06-12 |
-| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**Home Assistant 在宅/外出**＋**git 未コミット**（soft 委譲の readonly プローブ初例）が稼働＋**ハブのルーティング**（出力の土台）。OpenClaw 連携は**向き3×soft・ランタイム無し**で決定（§7-1）。残るは物理スタックチャンの実機側（要実機） |
+| M5 | connectors/（OpenCLAW・スタックチャン・Home Assistant 連携） | 🚧 入力＝**判定型出揃い**（HA・自前 MQTT・readonly プローブ 26 本）＋**ハブのルーティング**。OpenClaw 連携は**向き3×soft・ランタイム無し**で決定（§7-1）。出力＝**脳側全行程 landed（2026-06-12）**：v0 替え玉（stackchan.js）＋**MQTT 身体バス**（自前 QoS0 ブローカー同居・駆動プリミティブ↓／IMU sense↑・`持ち上げる` 初実装）を**実機ゼロで e2e 実証**。残るは ESP32-S3 実機の組み立てのみ（connectors §3-3 に配線表） |
 | OS別バックエンド | host 観察プローブの Win/Mac 対応（同じ IO 注入境界の内側を差し替え） | ✅ **Mac＋Win 全6本 landed**（2026-06-09・実機 osx-kvm／tiny10 で検証）。**特権ゼロ**＝読めるものだけ対応・thermal は両 OS で縮退／`process.platform` で読み口を分岐し**正規化境界で OS 差を吸収**（判定は無改修再利用）。Win は `Get-CimInstance`／PowerShell（disk/battery/memory/net/nic）＋`$Recycle.Bin` 再帰カウント（trash）。残るは導入（installer・自動起動）で OS バックエンドとは別議題。connectors/README.md §7-3 |
 | 導入（自動起動） | OS の仕組みで黙って起動・自動再起動（「観察の到達」でなく「導入の到達」＝開発者作法→エンドユーザー配布） | 🚧 導入は二層。**①自動起動ユニット**＝Linux=systemd user／macOS=launchd／Win=Task Scheduler（ログオン＋時刻トリガ）の**三 OS 全 landed**（Linux/macOS=2026-06-09・Win=2026-06-10。各実機で起動＋クラッシュ自動復活を実証。Win は tiny10/Win10/PS5.1/node20 で全 e2e）。**②エンドユーザー導入**は**三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall）。ワンライナー（`curl\|bash` / `irm\|iex`）で署名の壁（$99/SmartScreen）を構造的に回避（実証済）・GitHub 無料ホスティング・証明書は **openssl／`--mkcert`／`--tailscale` の三段すべて三 OS 実装済**。**`--mkcert` が LAN 利用の本命＝実機 iPad で表示＋カメラまで landed（client M2・2026-06-08）でそれで完結**。`--tailscale`（Tailscale Serve で tailnet ホスト名に本物の LE・佇かは自己署名 HTTPS のまま前段プロキシ・serve.js 無改修）は**外から繋ぐ用の任意オプション**（LAN には不要・サーバ側 e2e のみ実証）。秘密は env へ・env 無くても起動（PE）。[deploy/](deploy/README.md) |
 

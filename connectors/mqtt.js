@@ -6,7 +6,10 @@
 //   const c = makeMqttClient(opts);   // ブローカー未設定なら null（PE）
 //   c.subscribe('zigbee2mqtt/living'); // topic を購読（接続前でも可・CONNACK 後にまとめて送る）
 //   c.read(topic) → 最新 payload 文字列 | null（未着なら null）   ← ha.js の read() と同じ顔
+//   c.publish(topic, payload);        // QoS0 で発行（CONNACK 前は少しだけキュー・あふれたら古い順に捨てる）
 //   c.close();
+// opts.onMessage(topic, payload) … 受けた PUBLISH を push でも通知（イベント用。read の pull と併存。
+//   stackchan.js の ev/sense のように「同じ値が二度来る」イベントは latest の Map では区別できないため）。
 //
 // 設計の割り切り（ws.js の「テキスト専用・背圧見ない」と同じ精神）：
 //   - **QoS 0 のみ**（at-most-once）。QoS 1/2・retain の厳密さ・will・topic alias は持たない（LAN・小値前提）。
@@ -26,10 +29,10 @@ import net from 'node:net';
 const KEEPALIVE_S = 60;       // CONNECT で申告する keepalive（秒）。この間隔で PINGREQ を撃つ
 const RECONNECT_MS = 3000;    // 切断後に再接続を試みるまで
 
-// ---- ワイヤ・エンコード（QoS 0 で要るぶんだけ） ----
+// ---- ワイヤ・エンコード（QoS 0 で要るぶんだけ。broker.js も同じ部品を使う） ----
 
 // Remaining Length（可変長・7bit ずつ＋継続ビット）。
-function encodeLen(n) {
+export function encodeLen(n) {
   const out = [];
   do {
     let b = n % 128;
@@ -41,7 +44,7 @@ function encodeLen(n) {
 }
 
 // UTF-8 文字列を 2 バイト長プレフィックス付きで（MQTT の文字列表現）。
-function encodeStr(s) {
+export function encodeStr(s) {
   const b = Buffer.from(s, 'utf8');
   return Buffer.concat([Buffer.from([(b.length >> 8) & 0xff, b.length & 0xff]), b]);
 }
@@ -68,13 +71,19 @@ function buildSubscribe(packetId, topic) {
   return Buffer.concat([Buffer.from([0x82]), encodeLen(body.length), body]); // type 8 ＋必須 flags 0010
 }
 
+// PUBLISH（QoS0・retain なし）。packet id 不要＝topic と payload を並べるだけ。
+export function buildPublish(topic, payload) {
+  const body = Buffer.concat([encodeStr(topic), Buffer.from(String(payload), 'utf8')]);
+  return Buffer.concat([Buffer.from([0x30]), encodeLen(body.length), body]); // type 3・flags 0
+}
+
 const PINGREQ = Buffer.from([0xc0, 0x00]);
 const DISCONNECT = Buffer.from([0xe0, 0x00]);
 
-// ---- ワイヤ・デコード ----
+// ---- ワイヤ・デコード（broker.js も同じ部品を使う） ----
 
 // buf の先頭から 1 パケット切り出す。足りなければ null（断片化＝続きを待つ）。
-function parsePacket(buf) {
+export function parsePacket(buf) {
   if (buf.length < 2) return null;
   let multiplier = 1, value = 0, i = 1, byte;
   do {
@@ -90,7 +99,7 @@ function parsePacket(buf) {
 }
 
 // PUBLISH 本体 → {topic, payload}。QoS>0 なら topic の後に packet id が挟まる（防御的に飛ばす）。
-function parsePublish(body, flags) {
+export function parsePublish(body, flags) {
   const topicLen = (body[0] << 8) | body[1];
   const topic = body.subarray(2, 2 + topicLen).toString('utf8');
   let off = 2 + topicLen;
@@ -124,6 +133,9 @@ export function makeMqttClient(opts) {
 
   const subs = new Set();        // 購読したい topic（再接続時にまとめて送り直す）
   const latest = new Map();      // topic → 最新 payload（push を溜める＝pull で返す）
+  const onMessage = opts.onMessage || null; // 受信 PUBLISH の push 通知（イベント用・任意）
+  const PUB_QUEUE_MAX = 64;      // CONNACK 前の publish を溜める上限（QoS0＝あふれたら古い順に捨てる）
+  const pubQueue = [];           // 接続前の publish（接続できたら順に流す）
   let sock = null, buf = Buffer.alloc(0), connected = false, closed = false;
   let pid = 0, pinger = null, retry = null;
 
@@ -143,6 +155,7 @@ export function makeMqttClient(opts) {
         connected = pkt.body.length >= 2 && pkt.body[1] === 0; // return code 0 = accepted
         if (connected) {
           for (const t of subs) sendSubscribe(t);   // 接続できたら購読を（再）送出
+          while (pubQueue.length) send(buildPublish(...pubQueue.shift())); // 溜めた publish を流す
           if (pinger) clearInterval(pinger);
           pinger = setInterval(() => send(PINGREQ), keepaliveMs);
           if (pinger.unref) pinger.unref();
@@ -150,6 +163,7 @@ export function makeMqttClient(opts) {
       } else if (pkt.type === 3) {                  // PUBLISH（受信）
         const { topic, payload } = parsePublish(pkt.body, pkt.flags);
         latest.set(topic, payload);
+        if (onMessage) { try { onMessage(topic, payload); } catch { /* 通知先の失敗で受信を止めない */ } }
       }
       // SUBACK(9)/PINGRESP(13) は確認だけ＝何もしない（QoS0・割り切り）
     }
@@ -180,6 +194,11 @@ export function makeMqttClient(opts) {
       if (connected) sendSubscribe(topic);          // 接続済みなら即・未接続なら CONNACK 後にまとめて
     },
     read(topic) { return latest.has(topic) ? latest.get(topic) : null; },
+    publish(topic, payload) {
+      if (connected) { send(buildPublish(topic, payload)); return; }
+      pubQueue.push([topic, payload]);              // 接続前は溜める（CONNACK で流す）
+      if (pubQueue.length > PUB_QUEUE_MAX) pubQueue.shift(); // QoS0：あふれたら古い順に捨てる
+    },
     close() {
       closed = true;
       if (pinger) { clearInterval(pinger); pinger = null; }

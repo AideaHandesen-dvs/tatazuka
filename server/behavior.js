@@ -82,7 +82,7 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
   let lastBand = null;
   let lastWeatherAt = 0; // 直近に天気を見た時刻（0＝まだ。最初の tick で一度見る）
   const workDone = new Set(); // 既に出した在席マーク
-  let nade = 0, poke = 0, lastShake = 0;
+  let nade = 0, poke = 0, lastShake = 0, lastLift = 0;
 
   // ---- ②③ 時刻帯・在席時間・暇つぶし（「間」は server が刻む：protocol §4-1） ----
   // 天気は work/time/idle と独立した遅いサイクル。変化があれば一言（poll が null なら黙る）。
@@ -219,6 +219,13 @@ export function createSession({ send, persona, now, tickMs, weather, weatherMs, 
       case '揺らす': {
         const now = clock();
         if (now - lastShake > 4000) { lastShake = now; say('sense.shake'); motion('首を振る'); }
+        break;
+      }
+      case '持ち上げる': {
+        // §5-3 制定時からの語彙だが反応は物理ボディ（IMU・connectors §3-3）が初の送り手。
+        // IMU のチャタはファームが均す前提だが、server 側も揺らす同様 4 秒のゲートで防御。
+        const now = clock();
+        if (now - lastLift > 4000) { lastLift = now; say('sense.lift'); motion('首を振る'); }
         break;
       }
       default:

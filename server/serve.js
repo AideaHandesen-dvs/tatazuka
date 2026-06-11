@@ -43,6 +43,7 @@ import { createResume } from '../connectors/resume.js';
 import { createUptime } from '../connectors/uptime.js';
 import { createReunion } from './reunion.js';
 import { createTalkMemory } from './talkmemory.js';
+import { createBroker } from '../connectors/broker.js';
 
 // TZ_LLM が設定されていれば LLM persona に格上げ（無ければ従来のルールベース）。
 // どちらも line() の顔が同じなので behavior.js からは区別がつかない。
@@ -186,6 +187,13 @@ attachWS(server, '/ws', (sock) => {
   sock.onMessage((msg) => room.receive(msg));
   sock.onClose(() => room.close());
 });
+
+// ---- MQTT ブローカー同居（任意・connectors/README §3-3 の身体バス） ----
+// TZ_MQTT_BROKER=1 で自前 QoS0 ブローカーを同じプロセスに立てる（依存ゼロ・新サービス無し）。
+// 実機スタックチャンと stackchan.js（脳側）の待ち合わせ場所。無ければ何も立てない（PE）。
+if (process.env.TZ_MQTT_BROKER === '1') {
+  createBroker({ port: Number(process.env.TZ_MQTT_PORT || 1883), log: (s) => console.log(s) });
+}
 
 server.listen(PORT, () => {
   console.log(`佇か → https://localhost:${PORT}/  （wss://localhost:${PORT}/ws）`);

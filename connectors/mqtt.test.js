@@ -142,3 +142,40 @@ test('pick：生値／JSON パス／ネスト／壊れ・キー無しは null', 
   assert.equal(pick('{"a":{"b":1}}', 'a.c'), null);             // ネスト先キー無し
   assert.equal(pick(null, ''), null);                           // payload 無し
 });
+
+// ---- publish / onMessage（身体バス用の追加・README §3-3） ----
+
+test('publish：接続前はキュー → CONNACK 後に流れる・接続後は即送', () => {
+  const c = fakeConnect();
+  const cli = makeMqttClient({ url: 'mqtt://localhost:1883', connect: c });
+  const s = c.socks[0];
+  cli.publish('t/a', 'hello');                    // 接続前 → キュー（まだ書かれない）
+  assert.equal(s.written.filter((b) => typeOf(b) === 3).length, 0);
+
+  s.emit('connect');
+  s.emit('data', CONNACK_OK);                     // 受理 → キューが流れる
+  let pubs = s.written.filter((b) => typeOf(b) === 3);
+  assert.equal(pubs.length, 1);
+  assert.ok(hasStr(pubs[0], 't/a') && hasStr(pubs[0], 'hello'));
+
+  cli.publish('t/a', 'world');                    // 接続後 → 即送
+  pubs = s.written.filter((b) => typeOf(b) === 3);
+  assert.equal(pubs.length, 2);
+  assert.ok(hasStr(pubs[1], 'world'));
+  cli.close();
+});
+
+test('onMessage：受けた PUBLISH を push でも通知（read の pull と併存）', () => {
+  const got = [];
+  const c = fakeConnect();
+  const cli = makeMqttClient({ url: 'mqtt://localhost:1883', connect: c, onMessage: (t, p) => got.push([t, p]) });
+  const s = c.socks[0];
+  s.emit('connect');
+  s.emit('data', CONNACK_OK);
+  s.emit('data', pub('body/ev/sense', '{"kind":"shake"}'));
+  s.emit('data', pub('body/ev/sense', '{"kind":"shake"}')); // 同じ値が二度＝イベントは push でしか区別できない
+  assert.equal(got.length, 2, '同一 payload でも毎回通知される');
+  assert.deepEqual(got[0], ['body/ev/sense', '{"kind":"shake"}']);
+  assert.equal(cli.read('body/ev/sense'), '{"kind":"shake"}', 'pull（read）でも最新が見える');
+  cli.close();
+});

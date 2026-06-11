@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { makeBody, handle } from './stackchan.js';
+import { makeBody, handle, senseFromEvent } from './stackchan.js';
 
 // log を配列に溜める body を作る（実機なら NeoPixel/servo の駆動に当たる）。
 function rig() {
@@ -75,4 +75,54 @@ test('welcome / error も身体のログに出る（接続の儀式の可視化�
   handle(body, { type: 'error', data: { message: 'protocol version mismatch' } });
   assert.match(lines[0], /\[welcome\] protocol 0/);
   assert.match(lines[1], /\[error\] protocol version mismatch/);
+});
+
+// ---- MQTT 身体バス（README §3-3）：drive 注入で駆動プリミティブを固定 ----
+
+
+function rigDrive() {
+  const cmds = [];
+  return { cmds, body: makeBody({ log: () => {}, drive: (ch, obj) => cmds.push([ch, obj]) }) };
+}
+
+test('drive：emote → face（ASCII id＋色 hex）・motion → neck（gesture id）', () => {
+  const { cmds, body } = rigDrive();
+  handle(body, { type: 'emote', data: { mood: '喜び' } });
+  handle(body, { type: 'motion', data: { act: 'うなずく' } });
+  assert.deepEqual(cmds[0], ['face', { eyes: 'happy', led: '#FFD700', cheek: false }]);
+  assert.deepEqual(cmds[1], ['neck', { gesture: 'nod' }]);
+});
+
+test('drive：say＋mood は face → mouth の順で着地（§4-2）・台詞本文は身体に流さない', () => {
+  const { cmds, body } = rigDrive();
+  handle(body, { type: 'say', data: { text: 'それ3時間やってるぞ', mood: '呆れ' } });
+  assert.deepEqual(cmds[0], ['face', { eyes: 'flat', led: '#AAC8FF', cheek: false }]);
+  assert.deepEqual(cmds[1], ['mouth', { n: 10 }]);
+  assert.ok(!JSON.stringify(cmds).includes('3時間'), '本文は流れない（口の動きだけ）');
+});
+
+test('drive：presence → power・口パクは 20 でキャップ', () => {
+  const { cmds, body } = rigDrive();
+  handle(body, { type: 'presence', data: { here: false } });
+  handle(body, { type: 'say', data: { text: 'あ'.repeat(50) } });
+  assert.deepEqual(cmds[0], ['power', { on: false }]);
+  assert.deepEqual(cmds[1], ['mouth', { n: 20 }]);
+});
+
+test('drive：未知の mood/act/型は drive も無音（§4-1 が駆動プリミティブまで貫通）', () => {
+  const { cmds, body } = rigDrive();
+  handle(body, { type: 'emote', data: { mood: '知らない気分' } });
+  handle(body, { type: 'motion', data: { act: '謎の踊り' } });
+  handle(body, { type: 'tilt_stream', data: { x: 1 } });
+  assert.deepEqual(cmds, []);
+});
+
+test('senseFromEvent：ASCII kind → §5-3 語彙・ポインタ系のみ part 頭・未知/壊れは null', () => {
+  assert.deepEqual(senseFromEvent('{"kind":"poke"}'), { kind: 'つつく', part: '頭' });
+  assert.deepEqual(senseFromEvent('{"kind":"stroke"}'), { kind: 'なでる', part: '頭' });
+  assert.deepEqual(senseFromEvent('{"kind":"hold"}'), { kind: '長押し', part: '頭' });
+  assert.deepEqual(senseFromEvent('{"kind":"shake"}'), { kind: '揺らす' });       // センサ系に part は無い（§5-2）
+  assert.deepEqual(senseFromEvent('{"kind":"lift"}'), { kind: '持ち上げる' });    // v0 制定以来 初の実装者
+  assert.equal(senseFromEvent('{"kind":"dance"}'), null);                        // 未知 kind は黙って無視
+  assert.equal(senseFromEvent('not json'), null);                                // 壊れた payload も無視
 });

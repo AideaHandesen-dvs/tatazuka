@@ -327,3 +327,21 @@ test('talk：生成中に close されたら say は漏れず、記憶にも残�
   assert.ok(!sent.some((m) => m.type === 'say'), 'close 後に say が漏れてはいけない');
   assert.deepEqual(talkMemory.recent(), [], '届かなかった往復は覚えない');
 });
+
+test('持ち上げる：sense.lift で抗議し、4 秒のゲートで連発しない（§5-3・物理ボディが初の送り手）', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  const sent = [], seen = [];
+  let nowVal = new Date('2026-06-12T14:00:00').getTime();
+  const s = createSession({ send: (m) => sent.push(m), persona: recordingPersona(seen), now: () => nowVal, tickMs: 100000 });
+  s.receive(HELLO);
+  s.receive({ type: 'sense', data: { kind: '持ち上げる' } });
+  s.receive({ type: 'sense', data: { kind: '持ち上げる' } }); // 直後の連発（IMU チャタ相当）
+  await flush();
+  assert.equal(seen.filter((x) => x.s === 'sense.lift').length, 1, 'ゲート内は一度だけ');
+  nowVal += 5000; // 4 秒のゲートを越える
+  s.receive({ type: 'sense', data: { kind: '持ち上げる' } });
+  await flush();
+  assert.equal(seen.filter((x) => x.s === 'sense.lift').length, 2, 'ゲートが開けば再び抗議');
+  assert.ok(sent.some((m) => m.type === 'motion' && m.data.act === '首を振る'), '首を振って抗議する');
+  s.close();
+});
