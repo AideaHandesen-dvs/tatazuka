@@ -34,7 +34,7 @@ const LLM_SITUATIONS = {
   'idle':           '特に用事はないが、間が空いたのでふと一言こぼす',
   'walk.back':      'ちょっと留守にしていて、いま戻ってきた',
   // 受動の口（protocol §5-4。ctx.text にユーザーの言葉・ctx.history に直近のやり取り）
-  'talk':           'ユーザーがあなたに話しかけてきた。その言葉への、このキャラらしい短い返事をする',
+  'talk':           'ユーザーがあなたに直接話しかけてきた。これは会話。相手の言葉の内容に噛み合った返事をする。質問されたら答え、気が向けば短く聞き返す',
   'desk.away':      'ユーザーがしばらくキーボードを離れて、席を外したらしい',
   'desk.back':      '席を外していたユーザーが、デスクに戻ってきた',
   // 在宅/外出（connectors/home-assistant.js が HA の在席で検知。ctx.who に対象の名前が入ることがある）
@@ -293,9 +293,14 @@ function buildUser(situation, desc, ctx, ruleInUser) {
     }
     s += `\n相手の言葉: 「${ctx.text}」`;
   }
+  // 締めの指示（最も直近＝小型モデルに一番効く位置）。talk だけ「一言（茶々）」でなく
+  // 「相手への返事」を求める——観察の語り口のまま会話に答えると「状況の感想」になってしまう。
+  const ask = situation === 'talk'
+    ? '相手の言葉への、このキャラの返事を JSON で出せ。'
+    : 'この状況でのこのキャラの一言を JSON で出せ。';
   // 契約を user に置くときは、状況の直後・最後の指示の直前に挟む（最も直近に効かせる）
-  if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\nこの状況でのこのキャラの一言を JSON で出せ。`;
-  return `${s}\nこの状況でのこのキャラの一言を JSON で出せ。`;
+  if (ruleInUser) return `${s}\n\n${OUTPUT_RULE}\n\n${ask}`;
+  return `${s}\n${ask}`;
 }
 
 // 3B が text に紛れ込ませる癖を均す安全網：mood 語だけの行を落とし、改行を畳み、2文に詰める。

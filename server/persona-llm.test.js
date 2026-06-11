@@ -250,3 +250,12 @@ test('talk：壊れた出力は相槌の床（ルール表）へ', async () => {
   const p = createLLMPersona({ provider: stubProvider('生成に失敗して散文だけ返した'), fallback: stubFallback() });
   assert.deepEqual(await p.line('talk', { text: 'おい' }), { text: 'RULE:talk', mood: '通常' });
 });
+
+test('talk：締めの指示が「一言（茶々）」でなく「相手への返事」になる（他は従来のまま）', async () => {
+  const calls = [];
+  const p = createLLMPersona({ provider: stubProvider('{"text":"ん"}', calls), fallback: stubFallback() });
+  await p.line('talk', { text: 'おい' });
+  assert.match(calls[0], /相手の言葉への、このキャラの返事を JSON で出せ。$/, 'talk は返事モードで締める');
+  await p.line('idle');
+  assert.match(calls[1], /この状況でのこのキャラの一言を JSON で出せ。$/, '茶々系は従来の締めのまま');
+});
