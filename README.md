@@ -272,6 +272,24 @@ connector は二つの顔を持ち、**どちらの契約も既存の決定が�
 | OS別バックエンド | host 観察プローブの Win/Mac 対応（同じ IO 注入境界の内側を差し替え） | ✅ **Mac＋Win 全6本 landed**（2026-06-09・実機 osx-kvm／tiny10 で検証）。**特権ゼロ**＝読めるものだけ対応・thermal は両 OS で縮退／`process.platform` で読み口を分岐し**正規化境界で OS 差を吸収**（判定は無改修再利用）。Win は `Get-CimInstance`／PowerShell（disk/battery/memory/net/nic）＋`$Recycle.Bin` 再帰カウント（trash）。残るは導入（installer・自動起動）で OS バックエンドとは別議題。connectors/README.md §7-3 |
 | 導入（自動起動） | OS の仕組みで黙って起動・自動再起動（「観察の到達」でなく「導入の到達」＝開発者作法→エンドユーザー配布） | 🚧 導入は二層。**①自動起動ユニット**＝Linux=systemd user／macOS=launchd／Win=Task Scheduler（ログオン＋時刻トリガ）の**三 OS 全 landed**（Linux/macOS=2026-06-09・Win=2026-06-10。各実機で起動＋クラッシュ自動復活を実証。Win は tiny10/Win10/PS5.1/node20 で全 e2e）。**②エンドユーザー導入**は**三 OS とも一発導入 landed**（2026-06-10・`install.sh`＝Linux/macOS・`install.ps1`＝Windows。各実機で導入→HTTPS 200・冪等・uninstall）。ワンライナー（`curl\|bash` / `irm\|iex`）で署名の壁（$99/SmartScreen）を構造的に回避（実証済）・GitHub 無料ホスティング・証明書は **openssl／`--mkcert`／`--tailscale` の三段すべて三 OS 実装済**。**`--mkcert` が LAN 利用の本命＝実機 iPad で表示＋カメラまで landed（client M2・2026-06-08）でそれで完結**。`--tailscale`（Tailscale Serve で tailnet ホスト名に本物の LE・佇かは自己署名 HTTPS のまま前段プロキシ・serve.js 無改修）は**外から繋ぐ用の任意オプション**（LAN には不要・サーバ側 e2e のみ実証）。秘密は env へ・env 無くても起動（PE）。[deploy/](deploy/README.md) |
 
+## 10. いまの方針（2026-06-12 決定）
+
+コードで証明できる主張はほぼ出揃った（入力四方向の初例・三OS導入・人格の床と格上げ・受動の口・
+身体バスの実機ゼロ実証）。ここからの作業は性質の違う三本立て：
+
+1. **住む（常時・主軸）** — 唯一未証明の主張は「数週間一緒に住んで楽しい存在か」。これはコードでも
+   テストでも証明できないので、日常で使い込んで摩擦（茶々の頻度・記憶6往復の長さ・会話の切れ方…）を
+   見つけたら直す。「実測で詰める」文化の本番。
+2. **ハードで看板回収（発注先行）** — ①数千円の中古学習タブレット（§3-2 の最底辺の試金石＝README に
+   掲げた**最後の未回収主張**）②自作スタックチャン（最小構成・[connectors/](connectors/README.md) §3-3。
+   脳側全行程は実機ゼロで実証済み＝残るは組み立てのみ）。
+3. **見せる** — README にデモ GIF を一枚（透明な箱・VRM・会話という視覚の魅力がテキストに埋もれている）。
+   外部ユーザーが1人つけば installer と ghost 文化の初の実地検証になる。
+
+**やらないと決めたこと**：入力コネクタの増産（型のカタログは完成＝収穫逓減）／open-ended な
+delegate（§7-1 の「要ると分かってから」を維持。住んでみて「調べてきてほしい」と思う瞬間が合図）／
+認証・インターネット公開（LAN で困っていない）。
+
 ---
 
 ## ライセンス
