@@ -16,6 +16,7 @@ python3 -m http.server 8000 -d client
 - スマホ/タブレットで試すには **HTTPS が要る**（`getUserMedia` / `DeviceOrientation` の制約。README §6）。
   配信方法は未決の TODO。候補：mkcert のローカル証明書 / Tailscale Serve / 自己署名（iOS は痛い）。
 - `?label=リビングのiPad` で端末名を名乗れる（protocol §3-1 の `label`）。
+- `?hud=off` で左上のデバッグ HUD を消せる（撮影・日常用。既定は表示）。
 - ページをリロードすると `resumed: true` の hello になり、佇かが「落ちてたぞ」と言う（protocol §6-3 のデモ）。
 
 ## ファイル構成と責務

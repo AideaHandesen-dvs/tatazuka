@@ -217,8 +217,11 @@ talkBar.addEventListener('submit', (e) => {
 });
 
 // ---- HUD（プロト用デバッグ表示）----
+// ?hud=off で消せる（撮影・日常用＝透明な箱をデバッグ文字で汚さない）。既定は表示のまま
+hud.hidden = new URLSearchParams(location.search).get('hud') === 'off';
 let lastIn = '-', lastOut = '-';
 function renderHud() {
+  if (hud.hidden) return;
   hud.innerHTML = Object.entries(caps).map(([k, v]) => `${k}: ${v}`).join('<br>')
     + `<br>← ${lastIn}<br>→ ${lastOut}<br><button data-recal>視点リセット</button>`;
 }
