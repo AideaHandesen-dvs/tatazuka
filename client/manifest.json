@@ -1,0 +1,13 @@
+{
+  "name": "佇か",
+  "short_name": "佇か",
+  "description": "透明な箱の中に棲むデスクトップマスコット",
+  "start_url": "./?hud=off",
+  "display": "fullscreen",
+  "background_color": "#171b24",
+  "theme_color": "#171b24",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
