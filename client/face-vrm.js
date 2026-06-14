@@ -32,9 +32,12 @@ export async function createVRMFace({ scene: host, modelUrl, turn = 1, dist = 0.
   canvas.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;';
   host.appendChild(canvas);
 
-  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  // antialias(MSAA) は全画面×高DPIだと描画バッファを数倍に膨らませ、モデルの軽重と無関係に
+  // 非力な端末の GPU を巻き込んで落とす（軽量モデルでも同じ白画面＝犯人はこちら）。透過する箱の
+  // 中の顔でギザは目立たないので切る。解像度倍率も控えめにして安全側へ（低性能端末対応・README）。
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: false, powerPreference: 'low-power' });
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 20);

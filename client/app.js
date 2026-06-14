@@ -272,12 +272,27 @@ renderHud();
 (async function tryVRM() {
   if (caps.webgl !== 'on') return;
   const q = new URLSearchParams(location.search);
-  const modelUrl = q.get('model') || './models/vrm/aya-nogloves.vrm';
+  // クラッシュ・カナリア：VRM 描画が端末の GPU を巻き込んで落ちると、Chrome がページを
+  // 再読込→また描画→また落ちる、の白画面ループになる（JS 例外じゃないので catch も赤帯も無い）。
+  // 描画に踏み込む直前に印を残し、無事に数秒回ったら消す。読込時に印が残っていたら＝前回は描画中に
+  // 落ちた → 今回は VRM を諦めて卵で安定させる（佇かは出る・PE の床）。?model= 明示時は常に試す。
+  const CANARY = 'vrm-crash';
+  if (!q.has('model')) {
+    try {
+      if (sessionStorage.getItem(CANARY)) {
+        lastIn = 'VRM断念：前回描画中にクラッシュ→卵で安定（?model=…で強制再試行）';
+        renderHud();
+        return;
+      }
+    } catch { /* sessionStorage 不可なら素通り */ }
+  }
+  const modelUrl = q.get('model') || './models/vrm/aya-512.vrm';
   const num = (k) => (q.has(k) ? parseFloat(q.get(k)) : undefined); // 未指定は face-vrm の既定に任せる
   try {
     const head = await fetch(modelUrl, { method: 'HEAD' });
     if (!head.ok) return; // モデルが無ければ CSS のまま（既定の床）
     const mod = await import('./face-vrm.js');     // 動的 import：iOS12 はここで reject → catch
+    try { sessionStorage.setItem(CANARY, '1'); } catch { /* 無視 */ } // ここから先で落ちたら印が残る
     // 向き・距離・高さ・腕角は実機から ?turn= ?dist= ?y= ?arms= で微調整できる
     const vrm = await mod.createVRMFace({
       scene, modelUrl, turn: num('turn'), dist: num('dist'), yOffset: num('y'), arms: num('arms'),
@@ -289,8 +304,16 @@ renderHud();
     activeFace.emote(lastMood);
     lastIn = 'VRM: ' + modelUrl.split('/').pop();
     renderHud();
+    // 数秒生き延びたら「描画は安定」と判断して印を消す（次回も VRM を試せる）
+    setTimeout(() => { try { sessionStorage.removeItem(CANARY); } catch { /* 無視 */ } }, 6000);
   } catch (e) {
+    try { sessionStorage.removeItem(CANARY); } catch { /* 無視 */ } // 例外は捕捉できた＝白ループとは別物
     lastIn = 'VRM不可(CSS継続): ' + (e && e.message ? e.message.slice(0, 40) : e);
     renderHud(); // 卵のまま。設計通り佇かは出る
+    // HUD は ?hud=off（PWA 既定）だと出ない。失敗理由は index.html と同じ常時見える赤帯にも出す
+    // ＝実機に devtools を繋がず切り分けるため（失敗パスだけ・happy path には触れない）
+    const d = document.getElementById('err')
+      || document.body.appendChild(Object.assign(document.createElement('div'), { id: 'err' }));
+    d.textContent = 'VRM: ' + (e && e.message ? e.message : e);
   }
 })();

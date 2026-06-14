@@ -154,18 +154,32 @@ const server = https.createServer(
     if (req.method === 'HEAD') {
       fs.stat(file, (err, st) => {
         if (err || !st.isFile()) { res.writeHead(404).end(); return; }
-        res.writeHead(200, { 'content-type': type, 'content-length': st.size });
+        res.writeHead(200, {
+          'content-type': type, 'content-length': st.size,
+          'cache-control': 'no-cache', 'last-modified': st.mtime.toUTCString(),
+        });
         res.end();
       });
       return;
     }
-    fs.readFile(file, (err, body) => {
-      if (err) {
+    // 検証付きキャッシュ：毎回 If-Modified-Since で確認させ、変わってなければ 304（本体は送らない）。
+    // 古い app.js/style.css が黙って使い回される事故（このバグ調査を長引かせた元凶）を防ぎつつ、
+    // 不変の大物（three.module.js・モデル）は再DL不要にする＝低性能端末に優しい。
+    fs.stat(file, (err, st) => {
+      if (err || !st.isFile()) {
         res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('404');
         return;
       }
-      res.writeHead(200, { 'content-type': type });
-      res.end(body);
+      const lastMod = st.mtime.toUTCString();
+      if (req.headers['if-modified-since'] === lastMod) {
+        res.writeHead(304, { 'cache-control': 'no-cache', 'last-modified': lastMod }).end();
+        return;
+      }
+      fs.readFile(file, (err2, body) => {
+        if (err2) { res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('404'); return; }
+        res.writeHead(200, { 'content-type': type, 'cache-control': 'no-cache', 'last-modified': lastMod });
+        res.end(body);
+      });
     });
   },
 );
