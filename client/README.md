@@ -63,8 +63,8 @@ python3 -m http.server 8000 -d client
 ### モデルの置き方
 
 ```sh
-# 手元の .vrm を置くだけ。既定のパスは client/models/tatazuka.vrm
-cp ~/somewhere/youravatar.vrm client/models/tatazuka.vrm
+# 手元の .vrm を置くだけ。既定のパスは client/models/vrm/aya-512.vrm
+cp ~/somewhere/youravatar.vrm client/models/vrm/aya-512.vrm
 # 別パスを使うなら ?model= で指定： https://host:8443/?model=./models/foo.vrm
 ```
 
@@ -75,6 +75,12 @@ cp ~/somewhere/youravatar.vrm client/models/tatazuka.vrm
   `?y=`（注視点の高さ補正）`?arms=`（腕下げ角 rad, 既定1.0）。
 - **2026-06-08 実機検証**：Android Chrome（WebGL2）で aya（VRM0.x）を確認。**既定値のまま**
   正面・フレーミング・腕・視線追従・吹き出し すべて良好。iOS 12 の iPad は設計通り CSS の卵にフォールバック。
+- **既定は軽量版**（`aya-512`＝テクスチャを 512px 上限に落としたもの）＝非力な端末向けの予防。
+  フル解像で見たいなら `?model=./models/vrm/aya-nogloves.vrm` で明示（強い端末向け）。
+- **テクスチャを軽くする**：`node tools/shrink-vrm-textures.mjs in.vrm out.vrm 512`。JSON（VRM 拡張・
+  ボーン・マテリアル）は一切触らず PNG だけ縮小して詰め直す＝VRM を壊さない。展開後 GPU メモリが落ちる
+  （例：元 16.9MB のモデルでテクスチャ GPU 約130MB→約17MB）。**ただしこれは下の白画面の犯人ではない**
+  （別軸の重さ・後述）。
 
 ### face-vrm が実装する見た目
 
@@ -83,6 +89,28 @@ cp ~/somewhere/youravatar.vrm client/models/tatazuka.vrm
 - **mood → VRM 標準表情**（happy/angry/relaxed/surprised…）。`emote` で重みを lerp。
 - **act → 簡易ボーン動作**（うなずく＝head pitch / 首を振る＝head yaw / 跳ねる＝scene Y / こっちを見る）。
 - **say → 画面上部の吹き出し**（CSS 顔の #balloon とは別の overlay）。
+
+### 非力な端末で GPU ごと落ちる白画面（実機事故 2026-06-14）
+
+Android 実機で「VRM が**一瞬出てすぐ真っ白** → 勝手にリロード → また一瞬 → 白」のループが出た。
+原因は **`face-vrm.js` のレンダラ `antialias: true`**。antialias(MSAA) は画面を数倍の解像度で
+描いてからぼかすので、**全画面 × 高DPI** だと専用フレームバッファ（GPU メモリ）が可視解像度の
+数倍になる。この大きさは **画面サイズ・DPI・サンプル数で決まり、モデルのテクスチャとは無関係**。
+非力な GPU はこの確保で落ち、1フレーム目で死ぬ → 白 → Chrome がリロード → 連続クラッシュで
+WebGL 無効化 → 卵。**`antialias: false`**（＋ `setPixelRatio` を 1.5 上限・`powerPreference:'low-power'`）
+で解消。透過する箱の中の顔なのでギザは目立たない。
+
+- **テクスチャの重さは別軸**。展開後 GPU メモリ（2048² 1枚で 16MB）も重い端末には効くが、**今回の
+  白画面の犯人ではない**——軽量版（テクスチャ 1/8）でも寸分違わず同じ症状だったのが切り分けの決め手。
+  犯人はモデルと無関係なフレームバッファ側だった。
+- **クラッシュ・カナリア**（app.js `tryVRM`）：描画に踏み込む直前に `sessionStorage` へ印を置き、
+  無事に数秒回ったら消す。読込時に印が残っていたら＝前回は描画中に落ちた → その回は VRM を諦めて
+  **卵で安定**させる（白ループを断つ）。`?model=` 明示時は毎回挑戦。GPU が落ちても「佇かは出る」を守る床。
+- **VRM 失敗の理由は赤帯にも出す**：`?hud=off` だと HUD が消えるので、catch の理由を iOS 12 と同じ
+  画面下の赤帯（`#err`）にも出す。実機に devtools を繋がず切り分けるため。
+- **教訓**：症状が最初「WireGuard 越し」で出た／テクスチャが重い、に引きずられて長く遠回りした。
+  真因はローカルの描画設定。**「前は動いた／〜ようになった」はネットワークでなくローカル変更を疑い、
+  推測より先に観測する**（サーバのリクエストログを仕込んだら、端末がどこまで取りに来て落ちるか一発で判った）。
 
 ## 設計判断のメモ
 
