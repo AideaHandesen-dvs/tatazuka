@@ -23,10 +23,10 @@ const EXPR = {
 };
 const ALL_EXPR = ['happy', 'angry', 'sad', 'relaxed', 'surprised'];
 
-// turn=モデルの向き(半回転数, 既定1=180°でカメラを向く), dist=顔までの距離,
-// yOffset=注視点の高さ補正, arms=腕を下げる角度(rad, T字→Aポーズ。0で無効、符号反転で上下逆)
+// turn=モデルの向き(半回転数, 180°*turn)。未指定は VRM の版で自動判定＝VRM1.0→0 / VRM0.x→1(180°でカメラを向く),
+// dist=顔までの距離, yOffset=注視点の高さ補正, arms=腕を下げる角度(rad, T字→Aポーズ。0で無効、符号反転で上下逆)
 // ※ 見た目はヘッドレスで確認できないため、これらは ?turn= ?dist= ?y= ?arms= で実機から微調整できる
-export async function createVRMFace({ scene: host, modelUrl, turn = 1, dist = 0.95, yOffset = 0, arms = 1.0 }) {
+export async function createVRMFace({ scene: host, modelUrl, turn, dist = 0.95, yOffset = 0, arms = 1.0 }) {
   // ---- レンダラ（背景透過：カメラ映像＝透明な箱が後ろに透ける）----
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:absolute;top:0;right:0;bottom:0;left:0;width:100%;height:100%;';
@@ -55,7 +55,12 @@ export async function createVRMFace({ scene: host, modelUrl, turn = 1, dist = 0.
 
   if (VRMUtils.removeUnnecessaryVertices) VRMUtils.removeUnnecessaryVertices(gltf.scene);
   if (VRMUtils.combineSkeletons) VRMUtils.combineSkeletons(gltf.scene);
-  vrm.scene.rotation.y = Math.PI * turn; // three-vrm は -Z 向きに正規化。既定でカメラ（+Z 側）を向かせる
+  // 初期向き：VRM1.0 と VRM0.x は読込後の rest 向きが 180° 違う（three-vrm v3 実測・aya/askr=0.x は turn1、tatazuka=1.0 は turn0 で正面）。
+  // turn 明示が無ければ版で決める。glTF 拡張 VRMC_vrm の有無で VRM1.0 を判定。?turn= が来ればそれで上書き。
+  const isVRM1 = !!(gltf.parser && gltf.parser.json && gltf.parser.json.extensions
+    && gltf.parser.json.extensions.VRMC_vrm);
+  const turnEff = (turn == null) ? (isVRM1 ? 0 : 1) : turn;
+  vrm.scene.rotation.y = Math.PI * turnEff; // 180°*turn でカメラ（+Z 側）を向かせる
   scene.add(vrm.scene);
 
   // T字ポーズ → A字ポーズ（腕を下げる）。VRM に静止ポーズは無いのでこちらで整える
